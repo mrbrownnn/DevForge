@@ -6,6 +6,11 @@ Two rules, enforced here rather than at every call site:
   shell, so there is no shell metacharacter interpretation and no quoting bug
   that can turn into command injection.
 * Every process has a timeout and is killed when it expires.
+* Every process gets a constructed environment, never the host one. Passing the
+  invoking shell's environment would hand every ambient credential to any allowed
+  command - see devforge.tools.environment.
+* Captured output is bounded and truncation is visible in the result rather than
+  silent, so a tool cannot flood the context by printing forever.
 """
 
 from __future__ import annotations
@@ -14,6 +19,8 @@ import asyncio
 import time
 from dataclasses import dataclass
 from pathlib import Path
+
+from devforge.tools.environment import build_env
 
 MAX_CAPTURE_CHARS = 200_000
 
@@ -28,6 +35,7 @@ class ProcessResult:
     timed_out: bool = False
     started: bool = True
     error: str = ""
+    truncated: bool = False
 
     @property
     def combined(self) -> str:
@@ -43,8 +51,20 @@ class ProcessResult:
 
 
 async def run_process(
-    argv: list[str], *, cwd: Path, timeout_s: int = 600, env: dict[str, str] | None = None
+    argv: list[str],
+    *,
+    cwd: Path,
+    timeout_s: int = 600,
+    env: dict[str, str] | None = None,
+    allow_env: list[str] | None = None,
+    max_output_chars: int = MAX_CAPTURE_CHARS,
 ) -> ProcessResult:
+    """Run an argv with a timeout, a sanitised environment and bounded output.
+
+    ``env`` replaces the constructed environment entirely (tests use this).
+    ``allow_env`` names extra parent variables to carry through the allowlist.
+    """
+    child_env = env if env is not None else build_env(allow=allow_env or [])
     started_at = time.monotonic()
     try:
         process = await asyncio.create_subprocess_exec(
@@ -52,7 +72,7 @@ async def run_process(
             cwd=str(cwd),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env=env,
+            env=child_env,
         )
     except (OSError, ValueError) as exc:
         return ProcessResult(
@@ -82,10 +102,14 @@ async def run_process(
             error=f"'{argv[0]}' timed out after {timeout_s}s",
         )
 
+    stdout = stdout_bytes.decode("utf-8", errors="replace")
+    stderr = stderr_bytes.decode("utf-8", errors="replace")
+    truncated = len(stdout) > max_output_chars or len(stderr) > max_output_chars
     return ProcessResult(
         argv=argv,
         exit_code=process.returncode or 0,
-        stdout=stdout_bytes.decode("utf-8", errors="replace")[:MAX_CAPTURE_CHARS],
-        stderr=stderr_bytes.decode("utf-8", errors="replace")[:MAX_CAPTURE_CHARS],
+        stdout=stdout[:max_output_chars],
+        stderr=stderr[:max_output_chars],
         duration_ms=int((time.monotonic() - started_at) * 1000),
+        truncated=truncated,
     )

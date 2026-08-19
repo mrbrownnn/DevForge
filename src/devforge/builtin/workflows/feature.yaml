@@ -27,8 +27,8 @@ verifiers:
     required: false
   - id: build
     kind: build
-    description: Import the package to prove it is loadable
-    argv: [python, -c, "import devforge"]
+    description: Byte-compile the tree to prove it is syntactically loadable
+    argv: [python, -m, compileall, -q, .]
     timeout_s: 300
     required: false
 

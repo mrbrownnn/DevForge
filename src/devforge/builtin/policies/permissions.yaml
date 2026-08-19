@@ -17,7 +17,9 @@ shell:
     - "python -m pytest*"
     - "python -m mypy*"
     - "python -m unittest*"
-    - "python -c *"
+    # NOTE: "python -c" is deliberately absent. Inline code cannot be constrained
+    # by a glob, so it is gated for approval regardless of any allow rule.
+    - "python -m compileall*"
     - "pytest*"
     - "ruff check*"
     - "ruff format --check*"

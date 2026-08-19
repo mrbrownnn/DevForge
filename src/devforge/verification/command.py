@@ -7,8 +7,6 @@ A verifier the policy refuses is reported as ``ERROR`` - never as a pass.
 
 from __future__ import annotations
 
-import shlex
-
 from devforge.core.models import VerificationStatus
 from devforge.core.workflow.spec import VerifierSpec
 from devforge.tools.process import run_process
@@ -48,15 +46,14 @@ class CommandVerifier(Verifier):
             )
 
         cwd = ctx.policy.resolve_path(spec.cwd) if spec.cwd else ctx.workspace
-        ctx.logger.info(
-            "verification.start",
-            verifier=spec.id,
-            kind=spec.kind,
-            step=ctx.step_id,
-            attempt=ctx.attempt,
-            command=shlex.join(spec.argv),
+        process_policy = ctx.policy.permissions.process
+        process = await run_process(
+            spec.argv,
+            cwd=cwd,
+            timeout_s=spec.timeout_s,
+            allow_env=process_policy.allow_env,
+            max_output_chars=process_policy.max_output_chars,
         )
-        process = await run_process(spec.argv, cwd=cwd, timeout_s=spec.timeout_s)
 
         if not process.started:
             status = VerificationStatus.ERROR
@@ -82,15 +79,5 @@ class CommandVerifier(Verifier):
             duration_ms=process.duration_ms,
             summary=summary,
             output_excerpt=process.excerpt(MAX_EXCERPT_CHARS),
-        )
-        ctx.logger.info(
-            "verification.finish",
-            verifier=spec.id,
-            kind=spec.kind,
-            step=ctx.step_id,
-            attempt=ctx.attempt,
-            status=status.value,
-            exit_code=process.exit_code,
-            duration_ms=process.duration_ms,
         )
         return result

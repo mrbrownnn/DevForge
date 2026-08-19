@@ -57,6 +57,20 @@ class NetworkPolicy(BaseModel):
 
     enabled: bool = False
     allow_hosts: list[str] = Field(default_factory=list)
+    #: Resolve hostnames and refuse private/loopback/metadata targets (SSRF defence).
+    #: Disabling this is a real decision, not a convenience.
+    block_private_addresses: bool = True
+
+
+class ProcessPolicy(BaseModel):
+    """What a child process inherits and how much it may emit."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Extra environment variables to carry through to children, by exact name.
+    #: Everything not on the base allowlist or named here is dropped.
+    allow_env: list[str] = Field(default_factory=list)
+    max_output_chars: int = 200_000
 
 
 class PermissionPolicy(BaseModel):
@@ -65,6 +79,7 @@ class PermissionPolicy(BaseModel):
     version: int = 1
     description: str = ""
     shell: ShellPolicy = Field(default_factory=ShellPolicy)
+    process: ProcessPolicy = Field(default_factory=ProcessPolicy)
     filesystem: FilesystemPolicy = Field(default_factory=FilesystemPolicy)
     network: NetworkPolicy = Field(default_factory=NetworkPolicy)
 
