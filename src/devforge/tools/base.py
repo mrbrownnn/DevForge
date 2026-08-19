@@ -21,6 +21,7 @@ from devforge.core.models import Task, ToolResult, ToolStatus
 from devforge.core.registry.base import Registry
 from devforge.observability.logging import RunLogger, null_logger
 from devforge.policy.engine import PolicyDecision, PolicyEngine
+from devforge.tools.descriptor import ToolDescriptor, validate_params
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,9 @@ class Tool(ABC):
     name: str = "tool"
     description: str = ""
     actions: tuple[str, ...] = ()
+
+    #: Declares permissions, schemas and risk. Subclasses override with their own.
+    descriptor: ToolDescriptor = ToolDescriptor(name="tool")
 
     @abstractmethod
     async def invoke(self, action: str, params: dict[str, Any], ctx: ToolContext) -> ToolResult:
@@ -80,6 +84,17 @@ class Tool(ABC):
         return ToolResult(
             tool=self.name, action=action, status=ToolStatus.UNAVAILABLE, error=detail
         )
+
+    def validate(self, action: str, params: dict[str, Any]) -> ToolResult | None:
+        """Check parameters against the declared schema. Returns an error result or None.
+
+        Validating at the boundary means a hostile or malformed call is refused before
+        any handler touches a path, a process or a socket.
+        """
+        problems = validate_params(self.descriptor.schema_for(action), params)
+        if problems:
+            return self.fail(action, "; ".join(problems))
+        return None
 
     def unknown_action(self, action: str) -> ToolResult:
         return self.fail(
@@ -134,10 +149,10 @@ class ToolRegistry(Registry[Tool]):
 
     @classmethod
     def default(cls) -> ToolRegistry:
+        from devforge.mcp.tool import McpTool
         from devforge.tools.browser import BrowserTool
         from devforge.tools.filesystem import FilesystemTool
         from devforge.tools.git import GitTool
-        from devforge.tools.mcp import McpTool
         from devforge.tools.shell import ShellTool
 
         registry = cls()

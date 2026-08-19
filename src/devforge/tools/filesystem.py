@@ -12,12 +12,61 @@ from typing import Any
 
 from devforge.core.models import ToolResult
 from devforge.tools.base import Tool, ToolContext
+from devforge.tools.descriptor import (
+    TOOL_OUTPUT_SCHEMA,
+    RiskLevel,
+    ToolDescriptor,
+    ToolPermissions,
+)
+
+_PATH_ONLY = {
+    "type": "object",
+    "properties": {"path": {"type": "string"}},
+    "required": ["path"],
+    "additionalProperties": False,
+}
+_PATH_AND_CONTENT = {
+    "type": "object",
+    "properties": {"path": {"type": "string"}, "content": {"type": "string"}},
+    "required": ["path"],
+    "additionalProperties": False,
+}
+_EMPTY = {"type": "object", "properties": {}, "additionalProperties": False}
 
 
 class FilesystemTool(Tool):
     name = "filesystem"
     description = "Read, write, list and delete files inside the workspace."
     actions = ("read", "write", "append", "list", "exists", "mkdir", "delete")
+
+    descriptor = ToolDescriptor(
+        name="filesystem",
+        version="1.0.0",
+        description="Read, write, list and delete files inside the workspace.",
+        capabilities=["read", "write", "list", "delete"],
+        permissions=ToolPermissions(
+            filesystem_read=True,
+            filesystem_write=True,
+            filesystem_delete=True,
+            gates=["destructive_filesystem"],
+        ),
+        risk=RiskLevel.WRITE,
+        input_schema={
+            "read": _PATH_ONLY,
+            "list": {
+                "type": "object",
+                "properties": {"path": {"type": "string"}, "pattern": {"type": "string"}},
+                "required": ["path"],
+                "additionalProperties": False,
+            },
+            "exists": _PATH_ONLY,
+            "mkdir": _PATH_ONLY,
+            "delete": _PATH_ONLY,
+            "write": _PATH_AND_CONTENT,
+            "append": _PATH_AND_CONTENT,
+        },
+        output_schema=TOOL_OUTPUT_SCHEMA,
+    )
 
     async def invoke(self, action: str, params: dict[str, Any], ctx: ToolContext) -> ToolResult:
         handler = {

@@ -13,6 +13,12 @@ from typing import Any
 
 from devforge.core.models import ToolResult
 from devforge.tools.base import Tool, ToolContext
+from devforge.tools.descriptor import (
+    TOOL_OUTPUT_SCHEMA,
+    RiskLevel,
+    ToolDescriptor,
+    ToolPermissions,
+)
 from devforge.tools.process import run_process
 
 
@@ -21,9 +27,35 @@ class ShellTool(Tool):
     description = "Run an allowlisted command (no shell interpretation)."
     actions = ("run",)
 
+    descriptor = ToolDescriptor(
+        name="shell",
+        version="1.0.0",
+        description="Run an allowlisted command as an argv. No shell is spawned.",
+        capabilities=["process-execution"],
+        permissions=ToolPermissions(process_execution=True, gates=["destructive_command"]),
+        risk=RiskLevel.EXECUTE,
+        input_schema={
+            "run": {
+                "type": "object",
+                "properties": {
+                    "argv": {"type": "array", "items": {"type": "string"}},
+                    "command": {"type": "string"},
+                    "cwd": {"type": "string"},
+                    "timeout_s": {"type": "integer"},
+                },
+                "additionalProperties": False,
+            }
+        },
+        output_schema=TOOL_OUTPUT_SCHEMA,
+    )
+
     async def invoke(self, action: str, params: dict[str, Any], ctx: ToolContext) -> ToolResult:
         if action != "run":
             return self.unknown_action(action)
+
+        invalid = self.validate(action, params)
+        if invalid is not None:
+            return invalid
 
         argv = params.get("argv")
         if argv is None:
@@ -53,7 +85,14 @@ class ShellTool(Tool):
 
         timeout = int(params.get("timeout_s") or ctx.policy.permissions.shell.timeout_s)
         cwd = ctx.policy.resolve_path(params["cwd"]) if params.get("cwd") else ctx.workspace
-        result = await run_process(argv, cwd=cwd, timeout_s=timeout)
+        process_policy = ctx.policy.permissions.process
+        result = await run_process(
+            argv,
+            cwd=cwd,
+            timeout_s=timeout,
+            allow_env=process_policy.allow_env,
+            max_output_chars=process_policy.max_output_chars,
+        )
 
         ctx.logger.info(
             "tool.shell",
@@ -69,6 +108,7 @@ class ShellTool(Tool):
             "exit_code": result.exit_code,
             "duration_ms": result.duration_ms,
             "timed_out": result.timed_out,
+            "truncated": result.truncated,
         }
         if result.exit_code == 0:
             outcome = self.ok(action, result.combined, **payload)

@@ -13,15 +13,83 @@ from typing import Any
 
 from devforge.core.models import ToolResult
 from devforge.tools.base import Tool, ToolAvailability, ToolContext
+from devforge.tools.descriptor import (
+    TOOL_OUTPUT_SCHEMA,
+    RiskLevel,
+    ToolDescriptor,
+    ToolPermissions,
+)
 from devforge.tools.process import run_process
 
 BINARY = "git"
+
+
+_PATH_ONLY = {
+    "type": "object",
+    "properties": {"path": {"type": "string"}},
+    "required": ["path"],
+    "additionalProperties": False,
+}
+_PATH_AND_CONTENT = {
+    "type": "object",
+    "properties": {"path": {"type": "string"}, "content": {"type": "string"}},
+    "required": ["path"],
+    "additionalProperties": False,
+}
+_EMPTY = {"type": "object", "properties": {}, "additionalProperties": False}
 
 
 class GitTool(Tool):
     name = "git"
     description = "Inspect and record changes with git."
     actions = ("status", "diff", "log", "show", "branch", "add", "commit", "current_branch")
+
+    descriptor = ToolDescriptor(
+        name="git",
+        version="1.0.0",
+        description="Inspect and record changes with git, under the same command policy.",
+        capabilities=["vcs-read", "vcs-write"],
+        permissions=ToolPermissions(
+            process_execution=True, filesystem_read=True, gates=["destructive_command"]
+        ),
+        risk=RiskLevel.WRITE,
+        input_schema={
+            "status": _EMPTY,
+            "branch": _EMPTY,
+            "current_branch": _EMPTY,
+            "log": {
+                "type": "object",
+                "properties": {"limit": {"type": "integer"}},
+                "additionalProperties": False,
+            },
+            "show": {
+                "type": "object",
+                "properties": {"ref": {"type": "string"}},
+                "additionalProperties": False,
+            },
+            "diff": {
+                "type": "object",
+                "properties": {
+                    "staged": {"type": "boolean"},
+                    "paths": {"type": "array", "items": {"type": "string"}},
+                },
+                "additionalProperties": False,
+            },
+            "add": {
+                "type": "object",
+                "properties": {"paths": {"type": "array", "items": {"type": "string"}}},
+                "required": ["paths"],
+                "additionalProperties": False,
+            },
+            "commit": {
+                "type": "object",
+                "properties": {"message": {"type": "string"}},
+                "required": ["message"],
+                "additionalProperties": False,
+            },
+        },
+        output_schema=TOOL_OUTPUT_SCHEMA,
+    )
 
     def availability(self) -> ToolAvailability:
         path = shutil.which(BINARY)
@@ -77,7 +145,11 @@ class GitTool(Tool):
             return blocked
 
         result = await run_process(
-            argv, cwd=ctx.workspace, timeout_s=int(params.get("timeout_s", 120))
+            argv,
+            cwd=ctx.workspace,
+            timeout_s=int(params.get("timeout_s", 120)),
+            allow_env=ctx.policy.permissions.process.allow_env,
+            max_output_chars=ctx.policy.permissions.process.max_output_chars,
         )
         ctx.logger.info(
             "tool.git",
