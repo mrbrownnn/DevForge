@@ -1,0 +1,69 @@
+name: bugfix
+version: 1.0.0
+description: Reproduce, diagnose and fix a defect, proven by a regression test.
+
+verifiers:
+  - id: reproduction
+    kind: tests
+    description: The regression test - expected to FAIL before the fix exists
+    argv: [python, -m, pytest, -q, --last-failed]
+    timeout_s: 600
+    required: false
+  - id: tests
+    kind: tests
+    description: Project unit test suite
+    argv: [python, -m, pytest, -q]
+    timeout_s: 900
+    required: true
+  - id: lint
+    kind: lint
+    argv: [ruff, check, .]
+    timeout_s: 300
+    required: false
+
+steps:
+  - id: reproduce
+    name: Reproduce
+    agent: tester
+    skills: [debugging, testing]
+    tools: [filesystem, shell]
+    description: Reproduce the defect deterministically and capture the exact failure.
+    outputs: [reproduction.md]
+
+  - id: diagnose
+    name: Diagnose
+    agent: reviewer
+    skills: [debugging]
+    tools: [filesystem, git]
+    description: Identify the root cause from the reproduction evidence.
+    outputs: [diagnosis.md]
+
+  - id: approve-diagnosis
+    name: Diagnosis approval
+    kind: approval
+    gate: diagnosis
+    description: A human confirms the root cause before code changes.
+
+  - id: fix
+    name: Fix
+    agent: coder
+    skills: [debugging, backend]
+    tools: [filesystem, shell, git]
+    verify: [lint]
+    max_attempts: 3
+    description: Fix the root cause, not the symptom.
+
+  - id: regression-test
+    name: Regression test
+    agent: tester
+    skills: [testing]
+    tools: [filesystem, shell]
+    verify: [tests]
+    max_attempts: 3
+    description: Add a test that fails without the fix.
+
+  - id: verification
+    name: Verification
+    kind: verify
+    verify: [tests, lint]
+    description: Confirm the suite is green and nothing else regressed.

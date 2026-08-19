@@ -1,0 +1,73 @@
+name: refactor
+version: 1.0.0
+description: Restructure code without changing behaviour, with tests as the safety net.
+
+verifiers:
+  - id: tests
+    kind: tests
+    description: Behaviour must be identical before and after
+    argv: [python, -m, pytest, -q]
+    timeout_s: 900
+    required: true
+  - id: lint
+    kind: lint
+    argv: [ruff, check, .]
+    timeout_s: 300
+    required: true
+  - id: typecheck
+    kind: typecheck
+    argv: [python, -m, mypy, .]
+    timeout_s: 600
+    required: false
+
+steps:
+  - id: analyze
+    name: Analyse
+    agent: reviewer
+    skills: [architecture, debugging]
+    tools: [filesystem, git]
+    description: Map the current structure and name the concrete problem to solve.
+    outputs: [analysis.md]
+
+  - id: baseline
+    name: Baseline verification
+    kind: verify
+    verify: [tests]
+    description: Prove the suite is green BEFORE refactoring, otherwise there is no safety net.
+
+  - id: plan
+    name: Plan
+    agent: architect
+    skills: [planning, architecture]
+    description: Sequence the refactor into individually revertible steps.
+    outputs: [plan.md]
+
+  - id: approve-plan
+    name: Refactor approval
+    kind: approval
+    gate: architecture
+    description: A human approves the target structure before code moves.
+
+  - id: refactor
+    name: Refactor
+    agent: coder
+    skills: [backend, frontend]
+    tools: [filesystem, shell, git]
+    verify: [lint, typecheck]
+    max_attempts: 3
+    description: Apply the refactor without changing observable behaviour.
+
+  - id: tests
+    name: Test adjustment
+    agent: tester
+    skills: [testing]
+    tools: [filesystem, shell]
+    verify: [tests]
+    max_attempts: 3
+    description: Update tests only where the public interface legitimately moved.
+
+  - id: verification
+    name: Verification
+    kind: verify
+    verify: [tests, lint, typecheck]
+    description: Behaviour unchanged, structure improved.

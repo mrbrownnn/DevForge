@@ -1,0 +1,91 @@
+name: feature
+version: 1.0.0
+description: Build a new feature end to end, with verification and human approval gates.
+tags: [default]
+
+# Verifiers are declared once and referenced by id from steps. Adding a check means
+# editing this block, not editing Python. Every verifier runs through the permission
+# policy, so its argv must be allowed by policies/permissions.yaml.
+verifiers:
+  - id: tests
+    kind: tests
+    description: Project unit test suite
+    argv: [python, -m, pytest, -q]
+    timeout_s: 900
+    required: true
+  - id: lint
+    kind: lint
+    description: Static lint pass
+    argv: [ruff, check, .]
+    timeout_s: 300
+    required: false
+  - id: typecheck
+    kind: typecheck
+    description: Static type check
+    argv: [python, -m, mypy, .]
+    timeout_s: 600
+    required: false
+  - id: build
+    kind: build
+    description: Import the package to prove it is loadable
+    argv: [python, -c, "import devforge"]
+    timeout_s: 300
+    required: false
+
+steps:
+  - id: requirements
+    name: Requirements
+    agent: planner
+    skills: [requirements]
+    description: Turn the request into explicit, verifiable requirements.
+    outputs: [requirements.md]
+
+  - id: planning
+    name: Planning and architecture
+    agent: architect
+    skills: [planning, architecture]
+    description: Design the change and produce an ordered implementation plan.
+    outputs: [plan.md]
+
+  - id: approve-architecture
+    name: Architecture approval
+    kind: approval
+    gate: architecture
+    description: A human must approve the design before any code is written.
+
+  - id: implementation
+    name: Implementation
+    agent: coder
+    skills: [backend, frontend, debugging]
+    tools: [filesystem, shell, git]
+    verify: [lint, typecheck]
+    max_attempts: 3
+    description: Implement the approved plan.
+
+  - id: unit-tests
+    name: Unit tests
+    agent: tester
+    skills: [testing]
+    tools: [filesystem, shell]
+    verify: [tests]
+    max_attempts: 3
+    description: Add tests that would fail without the change.
+
+  - id: verification
+    name: Full verification
+    kind: verify
+    verify: [tests, lint, typecheck, build]
+    description: Independent checkpoint over the whole change.
+
+  - id: code-review
+    name: Code review
+    agent: reviewer
+    skills: [debugging, testing]
+    tools: [filesystem, git]
+    description: Review correctness, scope and maintainability.
+
+  - id: approve-final
+    name: Final approval
+    kind: approval
+    gate: final_review
+    description: A human signs off before the run is marked complete.

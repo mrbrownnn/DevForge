@@ -1,0 +1,74 @@
+name: clone
+version: 0.1.0
+description: >
+  Reproduce a website from a URL. This workflow is a real, executable extension point,
+  NOT a working feature: DevForge ships no browser automation and no visual diffing, so
+  the steps that need them halt with an "unavailable capability" failure instead of
+  pretending to succeed. Implement devforge.tools.browser and
+  devforge.verification.visual (see docs/tools.md) to make it run end to end.
+tags: [experimental, incomplete]
+
+verifiers:
+  - id: build
+    kind: build
+    description: The generated site must build
+    argv: [python, -c, "import devforge"]
+    timeout_s: 300
+    required: false
+  - id: visual
+    kind: visual
+    description: >
+      Screenshot comparison against the source site. Requires a visual verifier backend,
+      which is not implemented - this reports "unavailable", never "passed".
+    argv: []
+    timeout_s: 600
+    required: true
+
+steps:
+  - id: recon
+    name: Browser reconnaissance
+    agent: architect
+    skills: [architecture]
+    tools: [browser]
+    description: >
+      Load the target URL, capture the DOM, computed styles, assets and breakpoints.
+      Blocked: the browser tool is an unimplemented adapter.
+    outputs: [recon.md]
+
+  - id: design-analysis
+    name: Design analysis
+    agent: architect
+    skills: [architecture, frontend]
+    tools: [filesystem]
+    description: Derive layout, type scale, colour tokens and component inventory.
+    outputs: [design-analysis.md]
+
+  - id: approve-design
+    name: Design approval
+    kind: approval
+    gate: architecture
+    description: A human approves the derived design system before implementation.
+
+  - id: implementation
+    name: Implementation
+    agent: coder
+    skills: [frontend]
+    tools: [filesystem, shell, git]
+    verify: [build]
+    max_attempts: 3
+    description: Build the reproduction from the analysed design.
+
+  - id: visual-verification
+    name: Visual verification
+    kind: verify
+    verify: [visual]
+    max_attempts: 3
+    description: >
+      Screenshot the reproduction and diff it against the source. Blocked: no visual
+      verifier backend is implemented.
+
+  - id: approve-final
+    name: Final approval
+    kind: approval
+    gate: final_review
+    description: A human compares the result against the original before completion.
