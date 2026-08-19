@@ -83,7 +83,16 @@ class MockAgentRuntime(AgentRuntime):
         artifacts: list[Artifact] = []
         tool_calls: list[ToolCall] = []
         workspace = Path(context.workspace)
-        for relative, content in step.writes.items():
+
+        # Produce whatever the workflow step declared as an output. A real agent writes
+        # these files; the mock writes a placeholder with the same name, so the artifact
+        # verifier has something genuine to check. The verification is real either way -
+        # only the file content is a stand-in.
+        writes = dict(step.writes)
+        for declared in invocation.context.get("outputs", []):
+            writes.setdefault(declared, self._placeholder(invocation, declared))
+
+        for relative, content in writes.items():
             target = workspace / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content, encoding="utf-8")
@@ -114,6 +123,16 @@ class MockAgentRuntime(AgentRuntime):
                 "prompt_digest": self.prompt_digest(invocation),
                 "mode": invocation.mode.value,
             },
+        )
+
+    @staticmethod
+    def _placeholder(invocation: AgentInvocation, relative: str) -> str:
+        """Deterministic stand-in content for a declared output."""
+        return (
+            f"# {relative}\n\n"
+            f"Placeholder written by the mock runtime for step '{invocation.step_id}' "
+            f"(agent {invocation.agent}, attempt {invocation.attempt}).\n\n"
+            f"Task: {invocation.task_id}\n"
         )
 
     @staticmethod

@@ -61,6 +61,7 @@ class VerifierRegistry(Registry[Verifier]):
 
     @classmethod
     def default(cls) -> VerifierRegistry:
+        from devforge.verification.artifacts import ArtifactVerifier
         from devforge.verification.command import CommandVerifier
         from devforge.verification.visual import VisualVerifier
 
@@ -70,5 +71,6 @@ class VerifierRegistry(Registry[Verifier]):
         # distinct so reports and future backends can differentiate them.
         for kind in ("command", "tests", "lint", "typecheck", "build", "e2e", "security"):
             registry.register(kind, command)
+        registry.register("artifacts", ArtifactVerifier())
         registry.register("visual", VisualVerifier())
         return registry

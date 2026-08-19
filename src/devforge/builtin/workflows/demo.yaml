@@ -1,0 +1,70 @@
+name: demo
+version: 1.0.0
+description: >
+  End-to-end tour of the harness that runs in any project, including an empty one.
+  Every mechanism is real: agents run through the runtime, verification actually checks
+  the filesystem, the approval gate actually blocks, and state is actually persisted.
+  What is simulated is the agent itself - with the default mock runtime the "work" is
+  placeholder content. Verification is not simulated: it checks whether the files the
+  steps declared genuinely exist.
+tags: [demo, safe]
+
+verifiers:
+  # The only verifier kind that needs no test suite, no linter and no build, which is
+  # what lets this workflow complete in a fresh project. It executes nothing - it reads
+  # the filesystem through the permission policy.
+  - id: requirements-written
+    kind: artifacts
+    description: The requirements document was actually produced
+    expect: [docs/requirements.md]
+    required: true
+
+  - id: plan-written
+    kind: artifacts
+    description: The implementation plan was actually produced
+    expect: [docs/plan.md]
+    required: true
+
+  - id: deliverables-present
+    kind: artifacts
+    description: Everything the earlier steps promised still exists
+    expect: [docs/requirements.md, docs/plan.md, docs/review.md]
+    required: true
+
+steps:
+  - id: requirements
+    name: Requirements
+    agent: planner
+    skills: [requirements]
+    description: Turn the request into explicit, verifiable requirements.
+    outputs: [docs/requirements.md]
+    verify: [requirements-written]
+    max_attempts: 2
+
+  - id: planning
+    name: Planning
+    agent: architect
+    skills: [planning, architecture]
+    description: Design the change and sequence the work.
+    outputs: [docs/plan.md]
+    verify: [plan-written]
+    max_attempts: 2
+
+  - id: approve-plan
+    name: Plan approval
+    kind: approval
+    gate: architecture
+    description: A human approves the plan before anything else happens.
+
+  - id: review
+    name: Review
+    agent: reviewer
+    skills: [debugging]
+    description: Review what was produced.
+    outputs: [docs/review.md]
+
+  - id: verification
+    name: Final verification
+    kind: verify
+    verify: [deliverables-present]
+    description: Independent checkpoint over every declared deliverable.

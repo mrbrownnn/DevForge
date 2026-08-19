@@ -14,6 +14,15 @@ from devforge.core.workflow.spec import VerifierSpec
 from devforge.tools.process import run_process
 from devforge.verification.base import MAX_EXCERPT_CHARS, VerificationContext, Verifier
 
+#: Exit codes whose meaning is worth spelling out in the failure summary. A verifier
+#: that fails because there was nothing to check is a different problem from a
+#: verifier that fails because the code is broken.
+EXIT_CODE_HINTS = {
+    5: "no tests were collected - this workflow expects a project with a test suite",
+    127: "command not found - is the tool installed and on PATH?",
+    126: "command found but not executable",
+}
+
 
 class CommandVerifier(Verifier):
     kind = "command"
@@ -61,6 +70,9 @@ class CommandVerifier(Verifier):
         else:
             status = VerificationStatus.FAILED
             summary = f"{spec.id} failed (exit {process.exit_code})"
+            hint = EXIT_CODE_HINTS.get(process.exit_code)
+            if hint:
+                summary = f"{summary}: {hint}"
 
         result = self.result(
             spec,

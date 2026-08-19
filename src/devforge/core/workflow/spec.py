@@ -52,6 +52,8 @@ class VerifierSpec(BaseModel):
     description: str = ""
     argv: list[str] = Field(default_factory=list)
     cwd: str | None = None
+    #: Files an artifact verifier expects to exist; ignored by command verifiers.
+    expect: list[str] = Field(default_factory=list)
     timeout_s: int = 600
     required: bool = True
     # Exit codes other than 0 that still count as success (e.g. "no tests collected").
@@ -61,6 +63,11 @@ class VerifierSpec(BaseModel):
     def _check(self) -> VerifierSpec:
         if self.kind == "command" and not self.argv:
             raise ValueError(f"verifier '{self.id}': command verifiers require 'argv'")
+        if self.kind == "artifacts" and self.argv:
+            raise ValueError(
+                f"verifier '{self.id}': artifact verifiers take 'expect', not 'argv' - "
+                "they must never execute anything"
+            )
         return self
 
 
