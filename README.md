@@ -138,6 +138,10 @@ Full details: [docs/architecture.md](docs/architecture.md).
 | `devforge workflows` | List available workflows |
 | `devforge runtimes` | List agent runtimes and their availability |
 | `devforge doctor` | Environment check: what works, what is unavailable |
+| `devforge registry list` | Third-party skill sources, pins and dispositions |
+| `devforge registry show <id>` | Recorded evidence and decision for one source |
+| `devforge registry verify` | Validate the registry: pins, licenses, trust decisions |
+| `devforge inspect-skill <dir>` | Statically inspect an untrusted skill; nothing is executed |
 
 Exit codes: `0` success, `1` failure, `2` paused awaiting approval. Every command
 supports `--json`.
@@ -212,6 +216,31 @@ hostile agent. Real isolation needs an OS boundary — container, VM, seccomp �
 deliberately out of MVP scope. See [docs/security.md](docs/security.md).
 
 ---
+
+## Third-party skills are untrusted code
+
+DevForge treats every external skill as untrusted **code and instructions**. A survey of
+six well-known sources found 70 Python scripts, 41 shell scripts, 155 `.mjs` files,
+auto-executing session hooks and six opaque `.zip` archives — plus an instruction telling
+the agent to run a script before reading it.
+
+**There is no installer.** No code path fetches or runs a skill; that is the strongest
+available control and it costs nothing. What exists instead:
+
+- `registry/skills.yaml` — sources pinned by canonical URL **plus commit SHA** (names are
+  not identity: one skill name resolves to four repositories in the wild)
+- trust tiers, `untrusted` by default; a pin change revokes trust
+- a static inspector that flags pipe-to-shell, credential access, install commands,
+  archives, hooks and execute-before-read instructions
+
+```bash
+devforge registry list
+devforge inspect-skill ./some-untrusted-skill
+```
+
+Research: [docs/skill-ecosystem.md](docs/skill-ecosystem.md) ·
+Design: [docs/security/skill-supply-chain.md](docs/security/skill-supply-chain.md) ·
+Threats: [docs/security/threat-model.md](docs/security/threat-model.md)
 
 ## Current limitations
 
