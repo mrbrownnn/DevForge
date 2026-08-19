@@ -18,6 +18,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "ruff>=0.5"]
+# Enables devforge.tools.browser. Without it the tool reports unavailable rather
+# than fabricating page content. Also needs: playwright install chromium
+browser = ["playwright>=1.40"]
 
 [project.scripts]
 devforge = "devforge.cli.main:app"
