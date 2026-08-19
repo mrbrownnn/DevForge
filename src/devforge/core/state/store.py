@@ -138,6 +138,7 @@ class ProjectStore:
         store.save_config(config)
         store.save_state(ProjectState(project_id=config.project_id))
         store._seed_memory_files()
+        store._seed_mcp_config()
         return store
 
     @classmethod
@@ -168,6 +169,14 @@ class ProjectStore:
                 shutil.copyfile(source, target)
             else:  # templates are optional; never fail init over a missing seed
                 target.write_text(f"# {filename[:-3].title()}\n", encoding="utf-8")
+
+    def _seed_mcp_config(self) -> None:
+        """Write an empty MCP config so the deny-by-default posture is visible on disk."""
+        from devforge.mcp.registry import EXAMPLE_CONFIG, MCP_CONFIG_FILENAME
+
+        target = self.devforge_dir / MCP_CONFIG_FILENAME
+        if not target.exists():
+            target.write_text(EXAMPLE_CONFIG, encoding="utf-8")
 
     # -- config / state ---------------------------------------------------------
 
