@@ -4,8 +4,8 @@
 developer workspace and may consume third-party skills.
 **Method:** assets → trust boundaries → adversaries → threats (STRIDE-informed) →
 mitigations → residual risk.
-**Status:** Phase 0. Some mitigations are implemented, some are designed, some are
-explicitly absent. Each is labelled.
+**Status:** updated for Phase 1. Some mitigations are implemented, some are designed,
+some are explicitly absent. Each is labelled.
 
 ---
 
@@ -97,9 +97,11 @@ a post-install hook, or a session-start hook is arbitrary code execution as the 
 
 **Mitigations:** DevForge implements **no installer** — there is no code path that
 fetches and runs a skill (design decision, not an omission). Sources are `untrusted` by
-default, and that tier forbids scripts and install commands. The Phase 0 inspector
-detects install commands, archives and hook manifests. *Status: install-refusal
-implemented; inspector implemented; tier enforcement at consumption time is Phase 1.*
+default, and that tier forbids scripts and install commands. The inspector detects install
+commands, archives and hook manifests, and **enforcement now runs at consumption**: a
+skill from outside the project is refused unless the registry cleared its exact content
+hash, and any skill with a critical finding fails the step
+(`devforge/supplychain/consumption.py`). *Status: implemented, tested.*
 
 ### T2 — Prompt injection via skill instructions (ADV1, ADV4) — HIGH
 
@@ -202,9 +204,11 @@ memory or disk quota.**
 
 Events record commands and output excerpts, which can contain tokens.
 
-**Mitigations:** output excerpts are truncated; secret *files* are unreadable via policy.
-*Status: partial.* **Residual: no redaction pass over event payloads. Phase 1 — this is a
-small, well-scoped fix.**
+**Mitigations:** output excerpts are truncated; secret *files* are unreadable via policy;
+**secret-shaped strings are redacted from events and from persisted state** at the write
+boundary (`devforge/observability/redaction.py`). *Status: implemented, tested.*
+**Residual: a secret with no recognisable shape still passes through. Redaction lowers
+T12 from Medium to Low; it does not close it.**
 
 ---
 
@@ -223,10 +227,10 @@ small, well-scoped fix.**
 | T9 verification subversion | declarative verifiers | persisted results | run failure | **High** |
 | T10 adapter compromise | least-privilege tools | event log | mock default | Medium |
 | T11 exhaustion | timeouts; attempt bounds | duration events | kill | Low |
-| T12 secrets in logs | truncation | — | — | Medium |
+| T12 secrets in logs | truncation; **redaction** | — | — | Low |
 
-Four residual **High** risks. They are the honest state of a Phase 0 local harness, and
-they set the Phase 1–2 agenda.
+Three residual **High** risks after Phase 1 (T12 dropped to Low once redaction landed).
+They are the honest state of a local harness, and they set the Phase 2 agenda.
 
 ---
 
@@ -268,8 +272,8 @@ Out of scope for Phase 0, stated so nobody assumes coverage:
 
 | Priority | Control | Addresses |
 | --- | --- | --- |
-| P1 | Redact secret-shaped strings from event payloads | T12 |
-| P1 | Enforce trust tiers at skill consumption time | T1, T2 |
+| ~~P1~~ | ~~Redact secret-shaped strings from event payloads~~ — **done** (Phase 1); also applied to persisted state | T12 |
+| ~~P1~~ | ~~Enforce trust tiers at skill consumption time~~ — **done** (Phase 1) | T1, T2 |
 | P2 | Diff verifier config and test assertions across attempts | **T9** |
 | P2 | Append-only, hash-chained run journal | **T8** |
 | P2 | Route agent tool calls through the DevForge tool layer | T5, T10 |

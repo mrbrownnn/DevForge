@@ -13,7 +13,9 @@ tags: [default]
 
 verifiers:                 # available to the steps of this workflow
   - id: tests
-    kind: tests            # command | tests | lint | typecheck | build | e2e | security | visual
+    kind: tests            # command | tests | lint | typecheck | build | e2e | security
+                           #   | artifacts (checks declared files exist, runs nothing)
+                           #   | visual (declared, NOT implemented)
     description: ...
     argv: [python, -m, pytest, -q]
     cwd: null              # defaults to the workspace root
@@ -50,6 +52,22 @@ repair mode with the output of the failing verifiers, up to `max_attempts`.
 **approval** — pause for a human at `gate`. Gates should be declared in
 `policies/approvals.yaml`; an undeclared gate is treated as blocking (fail closed).
 
+## The `artifacts` verifier
+
+The only verifier kind that needs no external tooling, which is what lets a workflow
+complete in a project with no test suite:
+
+```yaml
+verifiers:
+  - id: plan-written
+    kind: artifacts
+    expect: [docs/plan.md]      # never `argv` - it executes nothing
+```
+
+It fails when a declared file is missing or empty, which catches the most common agent
+failure: reporting success without producing the deliverable. Paths go through the
+permission policy, so a verifier cannot probe outside the workspace.
+
 ## Verification semantics
 
 - The verifiers of a step run **concurrently**.
@@ -61,6 +79,7 @@ repair mode with the output of the failing verifiers, up to `max_attempts`.
 
 | Workflow | Steps | Notes |
 | --- | --- | --- |
+| `demo` | requirements → planning → **approval** → review → verification | Completes in any project; verifies declared artifacts exist |
 | `feature` | requirements → planning → **approval** → implementation → unit tests → verification → review → **approval** | The default |
 | `bugfix` | reproduce → diagnose → **approval** → fix → regression test → verification | The regression test is the proof |
 | `refactor` | analyse → **baseline verify** → plan → **approval** → refactor → tests → verification | Baseline first, or there is no safety net |

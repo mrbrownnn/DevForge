@@ -59,6 +59,10 @@ devforge init                       # creates .devforge/
 devforge doctor                     # what is available, what is not
 devforge plan --workflow feature    # what would happen, nothing executed
 
+# a complete run in any project, including an empty one
+devforge run --workflow demo --task "Add authentication" --interactive
+
+# the real thing: runs your tests, linters and build
 devforge run --workflow feature --task "Add authentication using JWT"
 # ... pauses at the architecture approval gate (exit code 2)
 
@@ -67,6 +71,12 @@ devforge run --resume task_ab12cd34
 devforge status
 devforge review
 ```
+
+`demo` completes end to end anywhere: its verifiers check that the files each step
+declared actually exist, which needs no test suite. `feature` runs `pytest`, `ruff` and
+your build, so in a project without tests it will **fail at the unit-tests step** — that
+is the verification loop working, not a bug. The failure says so: *"no tests were
+collected - this workflow expects a project with a test suite"*.
 
 The default runtime is `mock` — deterministic, offline, free. Use a real runtime
 explicitly:
@@ -143,6 +153,8 @@ Full details: [docs/architecture.md](docs/architecture.md).
 | `devforge registry verify` | Validate the registry: pins, licenses, trust decisions |
 | `devforge inspect-skill <dir>` | Statically inspect an untrusted skill; nothing is executed |
 
+Exit codes: `0` success, `1` failure, `2` paused awaiting approval.
+
 Exit codes: `0` success, `1` failure, `2` paused awaiting approval. Every command
 supports `--json`.
 
@@ -169,7 +181,7 @@ steps:
     gate: final_review
 ```
 
-Shipped workflows: `feature`, `bugfix`, `refactor`, `clone`
+Shipped workflows: `demo`, `feature`, `bugfix`, `refactor`, `clone`
 (`clone` is an executable extension point — see Limitations).
 
 ---
@@ -203,6 +215,11 @@ DevForge is **secure by default but it is not a sandbox.**
 What the policy layer does:
 
 - Deny-by-default allowlist for shell commands, matched on the argv DevForge execs.
+- Workflow YAML is data: a verifier it declares still goes through that allowlist, so a
+  workflow cannot run `curl` or `bash -c` that policy would otherwise refuse.
+- Secrets are redacted from events **and** persisted state at the write boundary
+  (known credential shapes, secret-named keys, private keys, URL credentials).
+- Third-party skills are inspected at consumption; a critical finding fails the step.
 - No shell is ever spawned — `&&`, `|`, `$(…)` are rejected, not interpreted.
 - Filesystem paths fully resolved (symlinks included) and confined to the workspace,
   with deny rules for `.env`, secrets, keys and `.git`.

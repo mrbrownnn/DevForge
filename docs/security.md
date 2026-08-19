@@ -99,6 +99,33 @@ declaring `tools: [filesystem]` cannot run shell commands. `permission_mode` is 
 default; `bypassPermissions` removes the permission checks of the CLI itself and should
 only be used inside a real sandbox with no network.
 
+## Secret redaction
+
+Implemented at two write boundaries and nowhere else: `RunLogger.emit` before an event
+reaches any sink, and `ProjectStore.save_task` before a task record touches disk.
+
+Caught: known credential shapes (Anthropic, OpenAI, GitHub, AWS, Google, Slack, JWT),
+values assigned to secret-named keys, `-----BEGIN PRIVATE KEY-----` blocks, and
+credentials embedded in URLs.
+
+**Not caught:** a secret with no recognisable shape. Redaction reduces exposure; it does
+not license logging secrets. The controls that actually keep credentials out are the
+filesystem deny rules on `.env`, `**/secrets/**` and key files.
+
+## Skill trust at consumption
+
+A skill is instructions handed to an agent that holds tool permissions, so origin decides
+the rule:
+
+| Origin | Rule |
+| --- | --- |
+| shipped with DevForge | trusted |
+| under the project root | inspected; a critical finding fails the step |
+| anywhere else | refused unless the registry records a review at that exact content hash |
+
+A refused skill **fails the step** rather than being silently dropped: a prompt missing
+the instructions it was meant to carry is a different prompt.
+
 ## Known gaps
 
 - No process isolation, no resource limits, no syscall filtering.
