@@ -19,18 +19,19 @@ Design constraints this file deliberately respects:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 
 from devforge.agents.prompt import build_invocation
 from devforge.agents.spec import AgentRegistry
 from devforge.approval.gate import ApprovalGate
+from devforge.core.execution import ExecutionContext
 from devforge.core.models import (
     ApprovalStatus,
     StepAttempt,
     StepRecord,
     StepStatus,
     Task,
+    TaskResult,
     TaskStatus,
     utcnow,
 )
@@ -39,27 +40,9 @@ from devforge.core.state.store import ProjectStore
 from devforge.core.workflow.spec import OnFailure, StepKind, WorkflowSpec, WorkflowStep
 from devforge.observability.logging import RunLogger
 from devforge.policy.engine import PolicyEngine
-from devforge.runtime.base import AgentRuntime, RuntimeContext
+from devforge.runtime.base import AgentRuntime
 from devforge.tools.base import ToolRegistry
-from devforge.verification.base import VerificationContext
 from devforge.verification.engine import VerificationEngine, VerificationReport
-
-
-@dataclass
-class RunOutcome:
-    """What a call to :meth:`Orchestrator.run` did."""
-
-    task: Task
-    stopped_at: str | None = None
-    reason: str = ""
-
-    @property
-    def awaiting_approval(self) -> bool:
-        return self.task.status is TaskStatus.AWAITING_APPROVAL
-
-    @property
-    def completed(self) -> bool:
-        return self.task.status is TaskStatus.COMPLETED
 
 
 class Orchestrator:
@@ -78,6 +61,7 @@ class Orchestrator:
         policy: PolicyEngine,
         logger: RunLogger,
         workspace: Path | None = None,
+        skill_registry: object | None = None,
     ) -> None:
         self.store = store
         self.runtime = runtime
@@ -89,10 +73,12 @@ class Orchestrator:
         self.policy = policy
         self.logger = logger
         self.workspace = Path(workspace or store.root)
+        # Registry of reviewed third-party sources; only external skills need it.
+        self.skill_registry = skill_registry
 
     # -- entry point ------------------------------------------------------------
 
-    async def run(self, task: Task, workflow: WorkflowSpec) -> RunOutcome:
+    async def run(self, task: Task, workflow: WorkflowSpec) -> TaskResult:
         specs = self.verification.collect_specs(workflow, self.store.load_config().verifiers)
         missing = workflow.missing_verifiers(set(specs))
         if missing:
@@ -102,6 +88,14 @@ class Orchestrator:
 
         task.status = TaskStatus.RUNNING
         self.store.save_task(task)
+        execution = ExecutionContext(
+            task=task,
+            workspace=self.workspace,
+            policy=self.policy,
+            tools=self.tools,
+            approval_gate=self.approvals,
+            logger=self.logger,
+        )
         self.logger.info(
             "run.start",
             task_id=task.task_id,
@@ -119,7 +113,7 @@ class Orchestrator:
             task.current_step = step.id
             self.store.save_task(task)
 
-            outcome = await self._run_step(task, workflow, step, record, specs)
+            outcome = await self._run_step(task, workflow, step, record, specs, execution)
             if outcome is not None:
                 return outcome
 
@@ -127,7 +121,7 @@ class Orchestrator:
         task.current_step = None
         self.store.save_task(task)
         self.logger.info("run.finish", task_id=task.task_id, status=task.status.value)
-        return RunOutcome(task=task, reason="workflow completed")
+        return TaskResult.from_task(task, reason="workflow completed")
 
     # -- steps ------------------------------------------------------------------
 
@@ -138,8 +132,9 @@ class Orchestrator:
         step: WorkflowStep,
         record: StepRecord,
         specs: dict,
-    ) -> RunOutcome | None:
-        """Run one step. Returns a RunOutcome when the run must stop here."""
+        execution: ExecutionContext,
+    ) -> TaskResult | None:
+        """Run one step. Returns a TaskResult when the run must stop here."""
         record.status = StepStatus.RUNNING
         record.started_at = record.started_at or utcnow()
         logger = self.logger.bind(task_id=task.task_id, step=step.id, agent=step.agent)
@@ -161,13 +156,21 @@ class Orchestrator:
                 logger,
             )
 
+        if step.kind is StepKind.AGENT:
+            blocked = self._untrusted_skills(step, logger)
+            if blocked:
+                return self._finish_failed_step(task, step, record, blocked, logger)
+
         for attempt_number in range(1, step.max_attempts + 1):
             attempt = StepAttempt(attempt=attempt_number)
             record.attempts.append(attempt)
 
             if step.kind is StepKind.AGENT:
                 previous = record.attempts[-2] if len(record.attempts) > 1 else None
-                result = await self._invoke_agent(task, step, attempt_number, previous, logger)
+                step_context = execution.for_step(step.id, attempt_number)
+                result = await self._invoke_agent(
+                    task, step, attempt_number, previous, step_context
+                )
                 attempt.agent_result = result
                 task.artifacts.extend(result.artifacts)
                 if not result.ok:
@@ -184,7 +187,7 @@ class Orchestrator:
                         )
                     continue
 
-            report = await self._verify(task, step, specs, attempt_number, logger)
+            report = await self._verify(step, specs, execution.for_step(step.id, attempt_number))
             attempt.verification = report.results
             task.record_verification(report.results)
             attempt.finished_at = utcnow()
@@ -230,7 +233,7 @@ class Orchestrator:
 
     def _run_approval_step(
         self, task: Task, step: WorkflowStep, record: StepRecord, logger: RunLogger
-    ) -> RunOutcome | None:
+    ) -> TaskResult | None:
         approval = self.approvals.request(
             task,
             gate=step.gate or step.id,
@@ -254,16 +257,16 @@ class Orchestrator:
             task.add_error("approval", record.error, step_id=step.id)
             self.store.save_task(task)
             logger.error("approval.rejected", gate=approval.gate, reason=record.error)
-            return RunOutcome(
-                task=task, stopped_at=step.id, reason=f"gate '{approval.gate}' rejected"
+            return TaskResult.from_task(
+                task, stopped_at=step.id, reason=f"gate '{approval.gate}' rejected"
             )
 
         record.status = StepStatus.AWAITING_APPROVAL
         task.status = TaskStatus.AWAITING_APPROVAL
         self.store.save_task(task)
         logger.info("approval.pending", gate=approval.gate, status="awaiting_approval")
-        return RunOutcome(
-            task=task,
+        return TaskResult.from_task(
+            task,
             stopped_at=step.id,
             reason=(
                 f"waiting for approval at gate '{approval.gate}'. "
@@ -273,14 +276,46 @@ class Orchestrator:
 
     # -- helpers ----------------------------------------------------------------
 
+    def _untrusted_skills(self, step: WorkflowStep, logger: RunLogger) -> str:
+        """Refuse to compose an untrusted skill into a prompt.
+
+        Returns a failure reason, or "" when every skill is cleared. A blocked skill
+        fails the step rather than being dropped: a prompt missing the instructions it
+        was meant to carry is a different prompt, and silently degrading the work would
+        hide the problem (docs/security/skill-supply-chain.md).
+        """
+        from devforge.supplychain.consumption import assess_all
+
+        spec = self.agents.get(step.agent)
+        names = step.skills or spec.skills
+        if not names:
+            return ""
+
+        skills = self.skills.resolve(names)
+        assessments = assess_all(skills, project_root=self.store.root, registry=self.skill_registry)
+        refused = [assessment for assessment in assessments if not assessment.allowed]
+        for assessment in refused:
+            logger.error(
+                "skill.blocked",
+                skill=assessment.skill,
+                origin=assessment.origin.value,
+                reason=assessment.reason,
+                content_hash=assessment.content_hash or None,
+            )
+        if not refused:
+            return ""
+        detail = "; ".join(f"{a.skill} ({a.origin.value}): {a.reason}" for a in refused)
+        return f"untrusted skill(s) refused - {detail}"
+
     async def _invoke_agent(
         self,
         task: Task,
         step: WorkflowStep,
         attempt_number: int,
         previous: StepAttempt | None,
-        logger: RunLogger,
+        execution: ExecutionContext,
     ):
+        logger = execution.logger
         spec = self.agents.get(step.agent)
         skill_names = step.skills or spec.skills
         skills = self.skills.resolve(skill_names)
@@ -305,12 +340,9 @@ class Orchestrator:
             skills=invocation.skills,
             tools=invocation.tools,
         )
-        context = RuntimeContext(
-            workspace=self.workspace,
-            tools=self.tools.subset(tools) if tools else None,
-            logger=logger,
+        result = await self.runtime.execute(
+            invocation, execution.for_runtime(self.tools.subset(tools) if tools else None)
         )
-        result = await self.runtime.execute(invocation, context)
         logger.info(
             "agent.result",
             runtime=result.runtime,
@@ -321,24 +353,16 @@ class Orchestrator:
         return result
 
     async def _verify(
-        self, task: Task, step: WorkflowStep, specs: dict, attempt_number: int, logger: RunLogger
+        self, step: WorkflowStep, specs: dict, execution: ExecutionContext
     ) -> VerificationReport:
         if not step.verify:
             return VerificationReport(results=[])
         selected = self.verification.select(specs, step.verify)
-        context = VerificationContext(
-            workspace=self.workspace,
-            policy=self.policy,
-            logger=logger,
-            step_id=step.id,
-            attempt=attempt_number,
-            task_id=task.task_id,
-        )
-        return await self.verification.run(selected, context)
+        return await self.verification.run(selected, execution.for_verification())
 
     def _finish_failed_step(
         self, task: Task, step: WorkflowStep, record: StepRecord, reason: str, logger: RunLogger
-    ) -> RunOutcome | None:
+    ) -> TaskResult | None:
         record.status = StepStatus.FAILED
         record.finished_at = utcnow()
         record.error = reason
@@ -352,11 +376,11 @@ class Orchestrator:
         task.status = TaskStatus.FAILED
         self.store.save_task(task)
         logger.error("step.finish", status="failed", reason=reason)
-        return RunOutcome(task=task, stopped_at=step.id, reason=reason)
+        return TaskResult.from_task(task, stopped_at=step.id, reason=reason)
 
-    def _fail_run(self, task: Task, kind: str, reason: str) -> RunOutcome:
+    def _fail_run(self, task: Task, kind: str, reason: str) -> TaskResult:
         task.status = TaskStatus.FAILED
         task.add_error(kind, reason)
         self.store.save_task(task)
         self.logger.error("run.finish", task_id=task.task_id, status="failed", reason=reason)
-        return RunOutcome(task=task, reason=reason)
+        return TaskResult.from_task(task, reason=reason)
