@@ -63,7 +63,9 @@ def test_task_round_trip_preserves_nested_records(project: ProjectStore) -> None
             status=StepStatus.FAILED,
             agent_result=AgentResult(invocation_id="inv_1", runtime="mock", summary="wrote code"),
             verification=[
-                VerificationResult(verifier="tests", kind="command", status=VerificationStatus.FAILED, exit_code=1)
+                VerificationResult(
+                    verifier="tests", kind="command", status=VerificationStatus.FAILED, exit_code=1
+                )
             ],
         )
     )
@@ -74,7 +76,10 @@ def test_task_round_trip_preserves_nested_records(project: ProjectStore) -> None
     loaded = project.load_task(task.task_id)
 
     assert loaded == task
-    assert loaded.step("implementation").attempts[0].verification[0].status is VerificationStatus.FAILED
+    assert (
+        loaded.step("implementation").attempts[0].verification[0].status
+        is VerificationStatus.FAILED
+    )
     assert loaded.approvals[0].status is ApprovalStatus.PENDING
 
 

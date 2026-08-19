@@ -88,7 +88,12 @@ class MockAgentRuntime(AgentRuntime):
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content, encoding="utf-8")
             artifacts.append(
-                Artifact(path=relative, kind="file", description="written by mock runtime", step_id=invocation.step_id)
+                Artifact(
+                    path=relative,
+                    kind="file",
+                    description="written by mock runtime",
+                    step_id=invocation.step_id,
+                )
             )
             tool_calls.append(
                 ToolCall(tool="filesystem", action="write", status=ToolStatus.OK, summary=relative)
@@ -105,7 +110,10 @@ class MockAgentRuntime(AgentRuntime):
             artifacts=artifacts,
             tool_calls=tool_calls,
             duration_ms=0,
-            metadata={"prompt_digest": self.prompt_digest(invocation), "mode": invocation.mode.value},
+            metadata={
+                "prompt_digest": self.prompt_digest(invocation),
+                "mode": invocation.mode.value,
+            },
         )
 
     @staticmethod
@@ -117,7 +125,10 @@ class MockAgentRuntime(AgentRuntime):
     @staticmethod
     def _default_summary(invocation: AgentInvocation) -> str:
         verb = "repaired" if invocation.mode is InvocationMode.REPAIR else "completed"
-        return f"mock {invocation.agent} {verb} step '{invocation.step_id}' (attempt {invocation.attempt})"
+        return (
+            f"mock {invocation.agent} {verb} step '{invocation.step_id}' "
+            f"(attempt {invocation.attempt})"
+        )
 
     @staticmethod
     def _default_output(invocation: AgentInvocation) -> str:

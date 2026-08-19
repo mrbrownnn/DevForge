@@ -87,7 +87,9 @@ class ProjectState(BaseModel):
 
 def _atomic_write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    handle = tempfile.NamedTemporaryFile(
+    # delete=False and a manual close are required: the file is renamed over the
+    # target after closing, which a context manager alone cannot express here.
+    handle = tempfile.NamedTemporaryFile(  # noqa: SIM115
         "w", encoding="utf-8", dir=str(path.parent), prefix=f".{path.name}.", delete=False
     )
     try:
@@ -128,9 +130,7 @@ class ProjectStore:
     ) -> ProjectStore:
         store = cls(root)
         if store.devforge_dir.exists() and not force:
-            raise StateError(
-                f"{store.devforge_dir} already exists (use --force to re-initialise)"
-            )
+            raise StateError(f"{store.devforge_dir} already exists (use --force to re-initialise)")
         store.runs_dir.mkdir(parents=True, exist_ok=True)
 
         config = ProjectConfig(name=name or store.root.name, default_runtime=default_runtime)

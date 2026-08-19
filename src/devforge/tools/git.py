@@ -76,7 +76,9 @@ class GitTool(Tool):
         if blocked is not None:
             return blocked
 
-        result = await run_process(argv, cwd=ctx.workspace, timeout_s=int(params.get("timeout_s", 120)))
+        result = await run_process(
+            argv, cwd=ctx.workspace, timeout_s=int(params.get("timeout_s", 120))
+        )
         ctx.logger.info(
             "tool.git",
             tool=self.name,
@@ -88,7 +90,11 @@ class GitTool(Tool):
         if result.exit_code == 0:
             outcome = self.ok(action, result.combined, exit_code=0)
         else:
-            outcome = self.fail(action, result.error or result.combined or f"exit {result.exit_code}", exit_code=result.exit_code)
+            outcome = self.fail(
+                action,
+                result.error or result.combined or f"exit {result.exit_code}",
+                exit_code=result.exit_code,
+            )
             outcome.output = result.combined
         outcome.duration_ms = result.duration_ms
         return outcome

@@ -154,7 +154,11 @@ class Orchestrator:
                 f"{name}: {self.tools.get(name).availability().detail}" for name in unavailable
             )
             return self._finish_failed_step(
-                task, step, record, f"required tool(s) {unavailable} are unavailable - {detail}", logger
+                task,
+                step,
+                record,
+                f"required tool(s) {unavailable} are unavailable - {detail}",
+                logger,
             )
 
         for attempt_number in range(1, step.max_attempts + 1):
@@ -250,7 +254,9 @@ class Orchestrator:
             task.add_error("approval", record.error, step_id=step.id)
             self.store.save_task(task)
             logger.error("approval.rejected", gate=approval.gate, reason=record.error)
-            return RunOutcome(task=task, stopped_at=step.id, reason=f"gate '{approval.gate}' rejected")
+            return RunOutcome(
+                task=task, stopped_at=step.id, reason=f"gate '{approval.gate}' rejected"
+            )
 
         record.status = StepStatus.AWAITING_APPROVAL
         task.status = TaskStatus.AWAITING_APPROVAL

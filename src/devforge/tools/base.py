@@ -58,10 +58,14 @@ class Tool(ABC):
     # -- helpers shared by every tool -------------------------------------------
 
     def ok(self, action: str, output: str = "", **data: Any) -> ToolResult:
-        return ToolResult(tool=self.name, action=action, status=ToolStatus.OK, output=output, data=data)
+        return ToolResult(
+            tool=self.name, action=action, status=ToolStatus.OK, output=output, data=data
+        )
 
     def fail(self, action: str, error: str, **data: Any) -> ToolResult:
-        return ToolResult(tool=self.name, action=action, status=ToolStatus.ERROR, error=error, data=data)
+        return ToolResult(
+            tool=self.name, action=action, status=ToolStatus.ERROR, error=error, data=data
+        )
 
     def denied(self, action: str, decision: PolicyDecision) -> ToolResult:
         return ToolResult(
@@ -79,10 +83,14 @@ class Tool(ABC):
 
     def unknown_action(self, action: str) -> ToolResult:
         return self.fail(
-            action, f"unknown action '{action}' for tool '{self.name}'; expected one of {list(self.actions)}"
+            action,
+            f"unknown action '{action}' for tool '{self.name}'; "
+            f"expected one of {list(self.actions)}",
         )
 
-    def authorize(self, action: str, decision: PolicyDecision, ctx: ToolContext, *, gate_prompt: str = "") -> ToolResult | None:
+    def authorize(
+        self, action: str, decision: PolicyDecision, ctx: ToolContext, *, gate_prompt: str = ""
+    ) -> ToolResult | None:
         """Return a blocking ToolResult, or ``None`` when the operation may proceed.
 
         When policy demands approval, an approval is requested on the task. If it

@@ -44,9 +44,7 @@ class Verifier(ABC):
         """Execute the check. Must never raise for a failing check - report it."""
 
     @staticmethod
-    def result(
-        spec: VerifierSpec, ctx: VerificationContext, **fields
-    ) -> VerificationResult:
+    def result(spec: VerifierSpec, ctx: VerificationContext, **fields) -> VerificationResult:
         return VerificationResult(
             verifier=spec.id,
             kind=spec.kind,

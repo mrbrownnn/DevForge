@@ -24,7 +24,7 @@ def write_workflow(path: Path, body: str) -> Path:
 
 def test_all_builtin_workflows_parse() -> None:
     loader = WorkflowLoader.for_project(None)
-    assert BUILTIN_WORKFLOWS <= set(loader.available())
+    assert set(loader.available()) >= BUILTIN_WORKFLOWS
 
     for spec in loader.load_all():
         assert spec.steps

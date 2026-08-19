@@ -140,7 +140,7 @@ class ClaudeCodeRuntime(AgentRuntime):
             stdout_bytes, stderr_bytes = await asyncio.wait_for(
                 process.communicate(), timeout=invocation.timeout_s
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             process.kill()
             await process.wait()
             duration_ms = int((time.monotonic() - started) * 1000)
@@ -157,7 +157,10 @@ class ClaudeCodeRuntime(AgentRuntime):
         stdout = stdout_bytes.decode("utf-8", errors="replace")[:MAX_OUTPUT_CHARS]
         stderr = stderr_bytes.decode("utf-8", errors="replace")[:MAX_OUTPUT_CHARS]
         return self.parse_result(
-            invocation, stdout=stdout, stderr=stderr, returncode=process.returncode or 0,
+            invocation,
+            stdout=stdout,
+            stderr=stderr,
+            returncode=process.returncode or 0,
             duration_ms=duration_ms,
         )
 

@@ -51,7 +51,9 @@ def test_add_error_touches_task() -> None:
 
 
 def test_verification_blocking_failure_respects_required_flag() -> None:
-    required = VerificationResult(verifier="tests", kind="command", status=VerificationStatus.FAILED)
+    required = VerificationResult(
+        verifier="tests", kind="command", status=VerificationStatus.FAILED
+    )
     optional = VerificationResult(
         verifier="lint", kind="command", status=VerificationStatus.FAILED, required=False
     )

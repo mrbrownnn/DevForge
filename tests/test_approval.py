@@ -16,9 +16,7 @@ def task() -> Task:
 
 
 def engine_with(gates: dict[str, GatePolicy], tmp_path: Path) -> PolicyEngine:
-    return PolicyEngine(
-        PermissionPolicy(), ApprovalPolicy(gates=gates), workspace=tmp_path
-    )
+    return PolicyEngine(PermissionPolicy(), ApprovalPolicy(gates=gates), workspace=tmp_path)
 
 
 def test_gate_records_pending_approval(tmp_path: Path, task: Task) -> None:
@@ -44,7 +42,9 @@ def test_resolve_marks_approved(tmp_path: Path, task: Task) -> None:
     gate = ApprovalGate(engine_with({"architecture": GatePolicy()}, tmp_path))
     gate.request(task, gate="architecture", step_id="s")
 
-    approval = gate.resolve(task, gate="architecture", approved=True, by="alice", reason="looks good")
+    approval = gate.resolve(
+        task, gate="architecture", approved=True, by="alice", reason="looks good"
+    )
 
     assert approval.status is ApprovalStatus.APPROVED
     assert approval.decided_by == "alice" and approval.decided_at is not None
@@ -121,7 +121,9 @@ def test_interactive_prompter_decides_inline(tmp_path: Path, task: Task) -> None
 
 
 def test_interactive_rejection_is_recorded(tmp_path: Path, task: Task) -> None:
-    gate = ApprovalGate(engine_with({"architecture": GatePolicy()}, tmp_path), prompter=lambda _: False)
+    gate = ApprovalGate(
+        engine_with({"architecture": GatePolicy()}, tmp_path), prompter=lambda _: False
+    )
 
     approval = gate.request(task, gate="architecture", step_id="s")
 

@@ -45,3 +45,6 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+# UP042: `str, Enum` is kept over `StrEnum` so enum values serialise identically
+# on every supported interpreter and stay comparable to plain strings.
+ignore = ["UP042"]

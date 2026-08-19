@@ -58,7 +58,9 @@ async def test_mock_runtime_records_invocations(tmp_path: Path) -> None:
 
 
 async def test_mock_runtime_writes_scripted_files(tmp_path: Path) -> None:
-    runtime = MockAgentRuntime(script={"implementation": MockStep(writes={"src/app.py": "x = 1\n"})})
+    runtime = MockAgentRuntime(
+        script={"implementation": MockStep(writes={"src/app.py": "x = 1\n"})}
+    )
 
     result = await runtime.execute(make_invocation(), context(tmp_path))
 
@@ -146,7 +148,13 @@ def test_claude_runtime_builds_argv_without_secrets() -> None:
 
 
 def test_claude_runtime_tool_mapping_is_least_privilege() -> None:
-    assert ClaudeCodeRuntime.allowed_tools(["filesystem"]) == ["Edit", "Glob", "Grep", "Read", "Write"]
+    assert ClaudeCodeRuntime.allowed_tools(["filesystem"]) == [
+        "Edit",
+        "Glob",
+        "Grep",
+        "Read",
+        "Write",
+    ]
     assert ClaudeCodeRuntime.allowed_tools(["git"]) == ["Bash(git *)"]
     assert "Bash" not in ClaudeCodeRuntime.allowed_tools(["filesystem"])
     assert ClaudeCodeRuntime.allowed_tools(["browser"]) == []

@@ -211,7 +211,9 @@ class PolicyEngine:
             return PolicyDecision(Effect.DENY, "network access is disabled by policy")
         for pattern in network.allow_hosts:
             if fnmatch(host, pattern):
-                return PolicyDecision(Effect.ALLOW, f"host allowed by rule '{pattern}'", rule=pattern)
+                return PolicyDecision(
+                    Effect.ALLOW, f"host allowed by rule '{pattern}'", rule=pattern
+                )
         return PolicyDecision(
             Effect.REQUIRE_APPROVAL, f"host '{host}' is not in the allow list", gate=NETWORK_GATE
         )
@@ -283,6 +285,4 @@ def _path_matches(pattern: str, relative: str) -> bool:
     if _compile_path_pattern(pattern).match(relative):
         return True
     # "src/**" also covers the directory itself.
-    if pattern.endswith("/**") and relative == pattern[:-3]:
-        return True
-    return False
+    return pattern.endswith("/**") and relative == pattern[:-3]

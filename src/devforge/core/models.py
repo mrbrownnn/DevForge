@@ -11,7 +11,7 @@ separate entity: the task id is the run id, and the run directory on disk is
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 from uuid import uuid4
@@ -21,7 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 def utcnow() -> datetime:
     """Timezone-aware UTC timestamp (used everywhere instead of ``datetime.now``)."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def new_id(prefix: str) -> str:

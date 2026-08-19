@@ -43,7 +43,7 @@ class RuntimeContext:
     """Everything a runtime may need besides the invocation itself."""
 
     workspace: Path
-    tools: "ToolRegistry | None" = None
+    tools: ToolRegistry | None = None
     logger: RunLogger = field(default_factory=null_logger)
     settings: dict = field(default_factory=dict)
 
@@ -55,9 +55,7 @@ class AgentRuntime(ABC):
     name: str = "abstract"
 
     @abstractmethod
-    async def execute(
-        self, invocation: AgentInvocation, context: RuntimeContext
-    ) -> AgentResult:
+    async def execute(self, invocation: AgentInvocation, context: RuntimeContext) -> AgentResult:
         """Run the agent and return a structured result.
 
         Implementations must not raise for *agent* failure - they return an

@@ -111,9 +111,7 @@ class ApprovalGate:
         return [a for a in task.approvals if a.status is ApprovalStatus.PENDING]
 
     @staticmethod
-    def _decide(
-        task: Task, approval: Approval, approved: bool, by: str, reason: str
-    ) -> Approval:
+    def _decide(task: Task, approval: Approval, approved: bool, by: str, reason: str) -> Approval:
         approval.status = ApprovalStatus.APPROVED if approved else ApprovalStatus.REJECTED
         approval.decided_at = utcnow()
         approval.decided_by = by

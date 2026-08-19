@@ -75,7 +75,16 @@ def test_load_skill_uses_directory_name_when_absent(tmp_path: Path) -> None:
 def test_builtin_skills_discover_and_resolve() -> None:
     registry = SkillRegistry.discover(project_root=None)
 
-    for expected in ("requirements", "planning", "architecture", "frontend", "backend", "testing", "debugging", "security"):
+    for expected in (
+        "requirements",
+        "planning",
+        "architecture",
+        "frontend",
+        "backend",
+        "testing",
+        "debugging",
+        "security",
+    ):
         assert expected in registry, f"built-in skill '{expected}' should be discoverable"
     assert registry.unresolved_dependencies() == {}
     assert all(skill.instructions.strip() for skill in registry.all())
@@ -125,7 +134,9 @@ def test_builtin_agents_discover_with_prompts() -> None:
         assert expected in registry
     coder = registry.get("coder")
     assert coder.role and coder.system_prompt and coder.prompt_template
-    assert coder.repair_template, "coder must know how to be re-prompted after a failed verification"
+    assert coder.repair_template, (
+        "coder must know how to be re-prompted after a failed verification"
+    )
 
 
 def test_agent_file_rejects_unknown_keys(tmp_path: Path) -> None:

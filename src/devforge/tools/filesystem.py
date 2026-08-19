@@ -59,7 +59,9 @@ class FilesystemTool(Tool):
         size = path.stat().st_size
         if size > limit:
             return self.fail("read", f"file is {size} bytes, over the {limit} byte read limit")
-        return self.ok("read", path.read_text(encoding="utf-8", errors="replace"), path=str(path), bytes=size)
+        return self.ok(
+            "read", path.read_text(encoding="utf-8", errors="replace"), path=str(path), bytes=size
+        )
 
     def _write(self, path: Path, params: dict[str, Any], ctx: ToolContext) -> ToolResult:
         content = params.get("content", "")

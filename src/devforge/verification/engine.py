@@ -97,9 +97,7 @@ class VerificationEngine:
                 output_excerpt=str(exc),
             )
 
-    async def run(
-        self, specs: list[VerifierSpec], ctx: VerificationContext
-    ) -> VerificationReport:
+    async def run(self, specs: list[VerifierSpec], ctx: VerificationContext) -> VerificationReport:
         """Run all verifiers concurrently and aggregate. Order of results is stable."""
         if not specs:
             return VerificationReport(results=[])

@@ -95,7 +95,9 @@ def new_task(project: ProjectStore, workflow: str = "feature") -> Task:
     )
 
 
-def simple_workflow(steps: list[WorkflowStep], verifiers: list[VerifierSpec] | None = None) -> WorkflowSpec:
+def simple_workflow(
+    steps: list[WorkflowStep], verifiers: list[VerifierSpec] | None = None
+) -> WorkflowSpec:
     return WorkflowSpec(name="test", steps=steps, verifiers=verifiers or [])
 
 
@@ -243,7 +245,9 @@ async def test_optional_verifier_failure_does_not_block(project: ProjectStore) -
     assert task.verification_results[0].status is VerificationStatus.FAILED
 
 
-async def test_undefined_verifier_fails_the_run_before_any_agent_runs(project: ProjectStore) -> None:
+async def test_undefined_verifier_fails_the_run_before_any_agent_runs(
+    project: ProjectStore,
+) -> None:
     workflow = simple_workflow([WorkflowStep(id="implementation", agent="coder", verify=["ghost"])])
     orchestrator, runtime = build(project)
     task = new_task(project)
@@ -273,7 +277,9 @@ async def test_unavailable_verifier_backend_is_not_a_pass(project: ProjectStore)
 
 
 async def test_agent_runtime_error_is_retried_then_fails(project: ProjectStore) -> None:
-    runtime = MockAgentRuntime(script={"implementation": MockStep(fail_attempts=99, error="runtime down")})
+    runtime = MockAgentRuntime(
+        script={"implementation": MockStep(fail_attempts=99, error="runtime down")}
+    )
     workflow = simple_workflow([WorkflowStep(id="implementation", agent="coder", max_attempts=2)])
     orchestrator, _ = build(project, runtime=runtime)
     task = new_task(project)
@@ -313,7 +319,9 @@ async def test_step_with_unavailable_tool_fails_clearly(project: ProjectStore) -
 async def test_on_failure_continue_keeps_going(project: ProjectStore) -> None:
     workflow = simple_workflow(
         [
-            WorkflowStep(id="recon", agent="architect", tools=["browser"], on_failure=OnFailure.CONTINUE),
+            WorkflowStep(
+                id="recon", agent="architect", tools=["browser"], on_failure=OnFailure.CONTINUE
+            ),
             WorkflowStep(id="implementation", agent="coder"),
         ]
     )
