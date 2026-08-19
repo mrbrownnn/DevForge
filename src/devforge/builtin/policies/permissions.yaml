@@ -1,0 +1,119 @@
+# DevForge permission policy.
+#
+# IMPORTANT: this is an allowlist, NOT a sandbox. Allowed commands run as the
+# current user with that user's full privileges. It protects against accidents
+# and drift, not against a hostile agent. See docs/security.md.
+#
+# Evaluation order for shell commands: deny -> require_approval -> allow -> default.
+# Patterns are fnmatch globs matched against the joined argv.
+version: 1
+description: Secure-by-default policy for local development.
+
+shell:
+  default: deny
+  timeout_s: 600
+
+  allow:
+    - "python -m pytest*"
+    - "python -m mypy*"
+    - "python -m unittest*"
+    - "python -c *"
+    - "pytest*"
+    - "ruff check*"
+    - "ruff format --check*"
+    - "mypy*"
+    - "npm test*"
+    - "npm run lint*"
+    - "npm run build*"
+    - "npm run typecheck*"
+    - "pnpm test*"
+    - "yarn test*"
+    - "go test*"
+    - "go build*"
+    - "cargo test*"
+    - "cargo build*"
+    - "git status*"
+    - "git diff*"
+    - "git log*"
+    - "git show*"
+    - "git branch*"
+    - "git add*"
+    - "git commit*"
+
+  # Destructive but sometimes legitimate: a human must approve each one.
+  require_approval:
+    - "git push*"
+    - "git reset --hard*"
+    - "git clean*"
+    - "git checkout --*"
+    - "npm publish*"
+    - "pip install*"
+    - "npm install*"
+    - "pnpm install*"
+    - "docker*"
+    - "terraform apply*"
+    - "kubectl apply*"
+    - "*deploy*"
+
+  # Never, regardless of approval.
+  deny:
+    - "rm -rf /*"
+    - "rm -rf ~*"
+    - "*mkfs*"
+    - "*shutdown*"
+    - "*reboot*"
+    - "git push --force*"
+    - "git push -f*"
+    - "*curl * | *sh*"
+    - "*wget * | *sh*"
+    - "*:(){*"
+
+filesystem:
+  # Refuse any path that resolves outside the workspace, symlinks included.
+  workspace_only: true
+  max_read_bytes: 1000000
+
+  read:
+    - "**"
+
+  write:
+    - "src/**"
+    - "tests/**"
+    - "docs/**"
+    - "lib/**"
+    - "app/**"
+    - "components/**"
+    - "*.md"
+    - "*.py"
+    - "*.toml"
+    - "*.cfg"
+    - "*.ini"
+    - "*.json"
+    - "*.yaml"
+    - "*.yml"
+    - "*.ts"
+    - "*.tsx"
+    - "*.js"
+    - "*.jsx"
+
+  # Denials win over read and write rules.
+  deny:
+    - ".env"
+    - ".env.*"
+    - "**/.env"
+    - "**/.env.*"
+    - "**/secrets/**"
+    - "**/*.pem"
+    - "**/*.key"
+    - "**/id_rsa*"
+    - ".git/**"
+    - ".devforge/state.json"
+
+  # Deletion is destructive: allow | deny | require_approval
+  delete: require_approval
+
+network:
+  # DevForge itself makes no network calls. Note that an allowed command
+  # (python, npm) can still reach the network - this flag governs DevForge tools.
+  enabled: false
+  allow_hosts: []

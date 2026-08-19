@@ -1,0 +1,43 @@
+# Human approval gates.
+#
+# Unknown gates are treated as blocking. Fail closed, never open.
+# auto_approve exists for CI or trusted local loops; leaving it false is the
+# secure default and is what the built-in workflows assume.
+version: 1
+description: Approval gates for the built-in workflows and destructive operations.
+
+gates:
+  architecture:
+    description: Approve the design before any code is written.
+    blocking: true
+    auto_approve: false
+
+  diagnosis:
+    description: Confirm the diagnosed root cause before a fix is attempted.
+    blocking: true
+    auto_approve: false
+
+  final_review:
+    description: Sign off on the completed change.
+    blocking: true
+    auto_approve: false
+
+  destructive_command:
+    description: A shell command matched a destructive rule in permissions.yaml.
+    blocking: true
+    auto_approve: false
+
+  destructive_filesystem:
+    description: A tool asked to delete or overwrite protected files.
+    blocking: true
+    auto_approve: false
+
+  network_access:
+    description: A tool asked to reach a host that is not on the allow list.
+    blocking: true
+    auto_approve: false
+
+  deployment:
+    description: Promote a change to a production environment.
+    blocking: true
+    auto_approve: false
