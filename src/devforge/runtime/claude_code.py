@@ -28,6 +28,7 @@ from typing import Any
 from devforge.core.errors import RuntimeExecutionError
 from devforge.core.models import AgentInvocation, AgentResult, AgentResultStatus
 from devforge.runtime.base import AgentRuntime, RuntimeAvailability, RuntimeContext
+from devforge.runtime.capabilities import Capability, RuntimeCapabilities
 
 BINARY = "claude"
 
@@ -60,6 +61,33 @@ class ClaudeCodeRuntime(AgentRuntime):
         self.model = model
         self.permission_mode = permission_mode
         self.extra_args = list(extra_args or [])
+
+    def capabilities(self) -> RuntimeCapabilities:
+        """Declared from the CLI surface DevForge actually drives.
+
+        STREAMING is absent deliberately: the adapter uses ``--output-format json``
+        and waits for a single result. The CLI can stream; this adapter does not,
+        and claiming otherwise would be a lie about DevForge, not about the CLI.
+        """
+        status = self.availability()
+        return RuntimeCapabilities(
+            name=self.name,
+            version=status.version or "unknown",
+            capabilities={
+                Capability.TOOLS,
+                Capability.STRUCTURED_OUTPUT,
+                Capability.SUBAGENTS,
+                Capability.APPROVALS,
+                Capability.MCP,
+                Capability.SESSIONS,
+            },
+            tools=sorted(TOOL_PERMISSION_MAP),
+            notes=(
+                "Billed model calls. Executes its own tools inside a turn, so those calls "
+                "are governed by the CLI permission system rather than by DevForge policy; "
+                "DevForge constrains them by deriving --allowedTools from the step scope."
+            ),
+        )
 
     # -- availability -----------------------------------------------------------
 

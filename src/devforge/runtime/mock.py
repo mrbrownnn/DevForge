@@ -29,6 +29,16 @@ from devforge.core.models import (
     ToolStatus,
 )
 from devforge.runtime.base import AgentRuntime, RuntimeAvailability, RuntimeContext
+from devforge.runtime.capabilities import Capability, RuntimeCapabilities
+
+
+@dataclass
+class MockToolCall:
+    """A tool call the mock agent should make through the executor."""
+
+    tool: str
+    action: str
+    params: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -43,6 +53,8 @@ class MockStep:
     writes: dict[str, str] = field(default_factory=dict)
     #: Number of leading attempts that fail before this step starts succeeding.
     fail_attempts: int = 0
+    #: Tool calls to make through the executor, in order.
+    tool_calls: list[MockToolCall] = field(default_factory=list)
 
 
 class MockAgentRuntime(AgentRuntime):
@@ -56,6 +68,18 @@ class MockAgentRuntime(AgentRuntime):
 
     def availability(self) -> RuntimeAvailability:
         return RuntimeAvailability(available=True, detail="in-process deterministic runtime")
+
+    def capabilities(self) -> RuntimeCapabilities:
+        return RuntimeCapabilities(
+            name=self.name,
+            version="1.0.0",
+            capabilities={Capability.TOOLS, Capability.STRUCTURED_OUTPUT},
+            notes=(
+                "Deterministic and offline. Calls tools through the DevForge executor, "
+                "so its tool use is fully policy-checked - which is what makes the "
+                "end-to-end security tests meaningful."
+            ),
+        )
 
     async def execute(self, invocation: AgentInvocation, context: RuntimeContext) -> AgentResult:
         self.invocations.append(invocation)
@@ -106,6 +130,30 @@ class MockAgentRuntime(AgentRuntime):
             )
             tool_calls.append(
                 ToolCall(tool="filesystem", action="write", status=ToolStatus.OK, summary=relative)
+            )
+
+        # Tool calls go through the executor, so the mock exercises the same policy
+        # path a real runtime would - denials included.
+        for planned in step.tool_calls:
+            if context.executor is None:
+                tool_calls.append(
+                    ToolCall(
+                        tool=planned.tool,
+                        action=planned.action,
+                        status=ToolStatus.DENIED,
+                        summary="no tool executor was provided to this runtime",
+                    )
+                )
+                continue
+            outcome = await context.executor.call(planned.tool, planned.action, planned.params)
+            tool_calls.append(
+                ToolCall(
+                    tool=outcome.tool,
+                    action=outcome.action,
+                    status=outcome.status,
+                    summary=(outcome.error or outcome.output or "")[:200],
+                    duration_ms=outcome.duration_ms,
+                )
             )
 
         summary = step.summary or self._default_summary(invocation)

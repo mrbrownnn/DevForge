@@ -18,9 +18,11 @@ from typing import TYPE_CHECKING, Protocol
 
 from devforge.core.models import AgentInvocation, AgentResult
 from devforge.observability.logging import RunLogger, null_logger
+from devforge.runtime.capabilities import RuntimeCapabilities
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from devforge.tools.base import ToolRegistry
+    from devforge.tools.executor import ToolExecutor
 
 
 class ToolProvider(Protocol):
@@ -40,10 +42,16 @@ class RuntimeAvailability:
 
 @dataclass
 class RuntimeContext:
-    """Everything a runtime may need besides the invocation itself."""
+    """Everything a runtime may need besides the invocation itself.
+
+    ``executor`` is the policy-enforcing door for tool calls. A runtime that can
+    delegate its tool use should call through it; one that runs its own tools -
+    an external CLI - cannot, and that gap stays documented rather than hidden.
+    """
 
     workspace: Path
     tools: ToolRegistry | None = None
+    executor: ToolExecutor | None = None
     logger: RunLogger = field(default_factory=null_logger)
     settings: dict = field(default_factory=dict)
 
@@ -67,6 +75,14 @@ class AgentRuntime(ABC):
     def availability(self) -> RuntimeAvailability:
         """Cheap local check, used by ``devforge doctor`` and before a run starts."""
         return RuntimeAvailability(available=True)
+
+    def capabilities(self) -> RuntimeCapabilities:
+        """What this runtime can do. Absent means "no", never "unknown".
+
+        The base declares nothing: an adapter that does not answer is treated as
+        the least capable runtime, which fails closed.
+        """
+        return RuntimeCapabilities(name=self.name, capabilities=set())
 
     def describe(self) -> str:
         return self.__doc__.strip().splitlines()[0] if self.__doc__ else self.name
