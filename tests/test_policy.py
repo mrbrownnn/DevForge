@@ -59,7 +59,10 @@ def test_shell_metacharacters_do_not_smuggle_a_second_command(engine: PolicyEngi
 
     assert decision.effect is Effect.DENY
     assert "shell syntax" in decision.reason
+    # Command substitution is denied outright, and that beats the inline-code gate:
+    # deny > require_approval, so a refusal is never downgraded to a question.
     assert engine.check_command(["python", "-c", "$(whoami)"]).effect is Effect.DENY
+    assert engine.check_command(["python", "-c", "print(1)"]).effect is Effect.REQUIRE_APPROVAL
 
 
 def test_path_outside_workspace_is_denied(engine: PolicyEngine, tmp_path: Path) -> None:

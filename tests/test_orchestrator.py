@@ -23,7 +23,7 @@ from devforge.observability.logging import RunLogger, jsonl_sink, read_events
 from devforge.policy.engine import PolicyEngine
 from devforge.policy.models import ApprovalPolicy, GatePolicy, PermissionPolicy
 from devforge.runtime.mock import MockAgentRuntime, MockStep
-from devforge.tools.base import ToolRegistry
+from devforge.tools.base import Tool, ToolAvailability, ToolRegistry
 from devforge.verification.engine import VerificationEngine
 
 # The permission policy is exercised in tests/test_policy.py. Here it must permit the
@@ -41,6 +41,20 @@ if count < {passes_on}:
     sys.exit(1)
 print("passing on attempt", count)
 """
+
+
+class _UnavailableTool(Tool):
+    """A tool that is never usable, so availability handling can be tested regardless
+    of what happens to be installed on the machine running the suite."""
+
+    name = "offline"
+    actions = ("noop",)
+
+    def availability(self) -> ToolAvailability:
+        return ToolAvailability(False, "deliberately unavailable test double")
+
+    async def invoke(self, action, params, ctx):  # pragma: no cover - never reached
+        raise AssertionError("an unavailable tool must never be invoked")
 
 
 def make_policy(root: Path, *, gates: dict[str, GatePolicy] | None = None) -> PolicyEngine:
@@ -305,27 +319,33 @@ async def test_agent_recovers_on_second_attempt(project: ProjectStore) -> None:
 
 
 async def test_step_with_unavailable_tool_fails_clearly(project: ProjectStore) -> None:
-    workflow = simple_workflow([WorkflowStep(id="recon", agent="architect", tools=["browser"])])
+    tools = ToolRegistry.default()
+    tools.register("offline", _UnavailableTool(), replace=True)
+    workflow = simple_workflow([WorkflowStep(id="recon", agent="architect", tools=["offline"])])
     orchestrator, runtime = build(project)
+    orchestrator.tools = tools
     task = new_task(project)
 
     outcome = await orchestrator.run(task, workflow)
 
     assert task.status is TaskStatus.FAILED
-    assert "browser" in outcome.reason and "unavailable" in outcome.reason
+    assert "offline" in outcome.reason and "unavailable" in outcome.reason
     assert runtime.invocations == [], "an agent must not be invoked without its required tools"
 
 
 async def test_on_failure_continue_keeps_going(project: ProjectStore) -> None:
+    tools = ToolRegistry.default()
+    tools.register("offline", _UnavailableTool(), replace=True)
     workflow = simple_workflow(
         [
             WorkflowStep(
-                id="recon", agent="architect", tools=["browser"], on_failure=OnFailure.CONTINUE
+                id="recon", agent="architect", tools=["offline"], on_failure=OnFailure.CONTINUE
             ),
             WorkflowStep(id="implementation", agent="coder"),
         ]
     )
     orchestrator, runtime = build(project)
+    orchestrator.tools = tools
     task = new_task(project)
 
     outcome = await orchestrator.run(task, workflow)
@@ -480,17 +500,22 @@ async def test_builtin_feature_workflow_reaches_first_gate(project: ProjectStore
     assert task.step("planning").status is StepStatus.PASSED
 
 
-async def test_builtin_clone_workflow_halts_on_missing_browser(project: ProjectStore) -> None:
+async def test_builtin_clone_workflow_stops_before_doing_unverifiable_work(
+    project: ProjectStore,
+) -> None:
+    """clone still cannot complete: visual verification has no backend. With a browser
+    driver present it now gets as far as the design approval gate instead of failing at
+    step one - progress, but it must never reach completion on an unchecked assumption."""
     workflow = WorkflowLoader.for_project(project.root).load("clone")
-    orchestrator, runtime = build(project)
+    orchestrator, _ = build(project)
     task = new_task(project, workflow="clone")
 
     outcome = await orchestrator.run(task, workflow)
 
-    assert task.status is TaskStatus.FAILED
-    assert outcome.stopped_at == "recon"
-    assert "unimplemented adapter" in outcome.reason
-    assert runtime.invocations == []
+    assert not outcome.completed
+    assert outcome.stopped_at in {"recon", "approve-design"}
+    if outcome.stopped_at == "recon":
+        assert "unavailable" in outcome.reason
 
 
 @pytest.mark.parametrize("name", ["feature", "bugfix", "refactor", "clone"])

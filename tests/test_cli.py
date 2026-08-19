@@ -93,12 +93,17 @@ def test_plan_shows_steps_and_gates(cwd_project: ProjectStore) -> None:
     assert "architecture" in result.stdout
 
 
-def test_plan_warns_about_unavailable_tools(cwd_project: ProjectStore) -> None:
+def test_plan_reports_the_tools_a_workflow_needs(cwd_project: ProjectStore) -> None:
+    from devforge.tools.base import ToolRegistry
+
     result = invoke("plan", "--workflow", "clone")
 
     assert result.exit_code == 0
-    assert "unavailable tools" in result.stdout
     assert "browser" in result.stdout
+    # The warning appears only when a driver is genuinely missing - availability is
+    # discovered, so the assertion follows the environment rather than fixing it.
+    if not ToolRegistry.default().get("browser").availability().available:
+        assert "unavailable tools" in result.stdout
 
 
 def test_plan_rejects_unknown_workflow(cwd_project: ProjectStore) -> None:
@@ -108,14 +113,18 @@ def test_plan_rejects_unknown_workflow(cwd_project: ProjectStore) -> None:
     assert "unknown workflow" in result.stdout + result.stderr
 
 
-def test_doctor_reports_unimplemented_adapters(cwd_project: ProjectStore) -> None:
+def test_doctor_reports_tool_and_runtime_availability(cwd_project: ProjectStore) -> None:
     result = invoke("doctor", "--json")
 
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
-    assert payload["tools"]["browser"]["available"] is False
-    assert payload["tools"]["mcp"]["available"] is False
     assert payload["runtimes"]["mock"]["available"] is True
+    # Every tool reports a boolean and a reason; doctor never leaves one unexplained.
+    for name in ("filesystem", "shell", "git", "mcp", "browser"):
+        entry = payload["tools"][name]
+        assert isinstance(entry["available"], bool)
+        if not entry["available"]:
+            assert entry["detail"], f"{name} is unavailable without saying why"
 
 
 def test_run_requires_a_task(cwd_project: ProjectStore) -> None:

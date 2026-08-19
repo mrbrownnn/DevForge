@@ -8,11 +8,11 @@ import pytest
 from devforge.approval.gate import ApprovalGate
 from devforge.core.errors import RegistryError
 from devforge.core.models import ApprovalStatus, Task, ToolStatus
+from devforge.mcp.tool import McpTool
 from devforge.policy.engine import PolicyEngine
 from devforge.tools.base import ToolContext, ToolRegistry
 from devforge.tools.browser import BrowserTool
 from devforge.tools.filesystem import FilesystemTool
-from devforge.tools.mcp import McpTool
 from devforge.tools.shell import ShellTool
 
 
@@ -57,10 +57,14 @@ def test_registry_subset_scopes_a_step() -> None:
 
 
 def test_registry_reports_unavailable_tools() -> None:
+    """Availability is discovered, not declared: the browser tool is usable only when
+    a driver is installed, so this asserts the mechanism rather than a fixed answer."""
     registry = ToolRegistry.default()
 
-    assert registry.unavailable_names(["filesystem", "browser", "mcp"]) == ["browser", "mcp"]
-    assert registry.unavailable_names(["filesystem"]) == []
+    assert registry.unavailable_names(["filesystem", "shell", "git", "mcp"]) == []
+    browser_available = registry.get("browser").availability().available
+    expected = [] if browser_available else ["browser"]
+    assert registry.unavailable_names(["browser"]) == expected
 
 
 # ---------------------------------------------------------------------- filesystem
@@ -149,14 +153,14 @@ async def test_filesystem_read_limit(ctx: ToolContext) -> None:
 
 
 async def test_shell_runs_allowlisted_command(ctx: ToolContext) -> None:
-    result = await ShellTool().invoke(
-        "run", {"argv": [sys.executable, "-c", "print('hello')"]}, ctx
-    )
+    script = ctx.workspace / "hello.py"
+    script.write_text("print('hello')\n", encoding="utf-8")
+    ctx.policy.permissions.shell.allow.append("*")
 
-    # sys.executable is an absolute path, so the allow rule "python -c *" may not match.
-    assert result.status in {ToolStatus.OK, ToolStatus.DENIED}
-    if result.ok:
-        assert "hello" in result.output
+    result = await ShellTool().invoke("run", {"argv": [sys.executable, str(script)]}, ctx)
+
+    assert result.ok
+    assert "hello" in result.output
 
 
 async def test_shell_denies_unlisted_command(ctx: ToolContext) -> None:
@@ -183,23 +187,25 @@ async def test_shell_destructive_command_needs_approval(gated_ctx: ToolContext) 
 
 
 async def test_shell_reports_nonzero_exit(ctx: ToolContext) -> None:
+    # A script file, not `python -c`: inline code is approval-gated regardless of the
+    # allowlist, because a glob cannot constrain what inline code does.
+    script = ctx.workspace / "exit3.py"
+    script.write_text("import sys; sys.exit(3)\n", encoding="utf-8")
     ctx.policy.permissions.shell.allow.append("*")
 
-    result = await ShellTool().invoke(
-        "run", {"argv": [sys.executable, "-c", "import sys; sys.exit(3)"]}, ctx
-    )
+    result = await ShellTool().invoke("run", {"argv": [sys.executable, str(script)]}, ctx)
 
     assert result.status is ToolStatus.ERROR
     assert result.data["exit_code"] == 3
 
 
 async def test_shell_times_out(ctx: ToolContext) -> None:
+    script = ctx.workspace / "sleep.py"
+    script.write_text("import time; time.sleep(30)\n", encoding="utf-8")
     ctx.policy.permissions.shell.allow.append("*")
 
     result = await ShellTool().invoke(
-        "run",
-        {"argv": [sys.executable, "-c", "import time; time.sleep(30)"], "timeout_s": 1},
-        ctx,
+        "run", {"argv": [sys.executable, str(script)], "timeout_s": 1}, ctx
     )
 
     assert result.status is ToolStatus.ERROR
@@ -217,21 +223,36 @@ async def test_shell_rejects_malformed_input(ctx: ToolContext) -> None:
 # ------------------------------------------------------------- unavailable adapters
 
 
-async def test_browser_tool_reports_unavailable_never_fake_data(ctx: ToolContext) -> None:
+async def test_browser_tool_reports_status_but_never_fabricates(ctx: ToolContext) -> None:
     tool = BrowserTool()
+    available = tool.availability().available
 
-    assert tool.availability().available is False
-    for action in tool.actions:
-        result = await tool.invoke(action, {"url": "https://example.com"}, ctx)
+    result = await tool.invoke("text", {"url": "https://example.com"}, ctx)
+
+    if available:
+        # Playwright is installed, so the refusal must come from the network policy,
+        # which is disabled by default - not from a missing driver.
+        assert result.status is ToolStatus.DENIED
+        assert "network access is disabled" in result.error
+    else:
         assert result.status is ToolStatus.UNAVAILABLE
-        assert result.output == "", "an unavailable tool must not fabricate output"
-        assert "unimplemented adapter" in result.error
+        assert "playwright is not installed" in result.error
+    assert result.output == "", "no page content may be fabricated either way"
 
 
-async def test_mcp_tool_reports_unavailable(ctx: ToolContext) -> None:
+async def test_mcp_tool_denies_unknown_servers(ctx: ToolContext) -> None:
     tool = McpTool()
 
-    assert tool.availability().available is False
-    result = await tool.invoke("list_servers", {}, ctx)
-    assert result.status is ToolStatus.UNAVAILABLE
-    assert result.data == {}
+    assert tool.availability().available, "the MCP bridge is implemented as of Phase 2"
+
+    result = await tool.invoke("call", {"server": "ghost", "tool": "anything"}, ctx)
+
+    assert result.status is ToolStatus.DENIED
+    assert "no MCP server named 'ghost'" in result.error
+
+
+async def test_mcp_list_servers_is_empty_without_configuration(ctx: ToolContext) -> None:
+    result = await McpTool().invoke("list_servers", {}, ctx)
+
+    assert result.ok
+    assert result.data["servers"] == []

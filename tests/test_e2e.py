@@ -107,11 +107,11 @@ def test_full_run_through_the_cli(project: Path) -> None:
     assert invoke("init", "--name", "e2e").exit_code == 0
     store = ProjectStore.discover(project)
 
-    # -- doctor sees the project and reports the unimplemented adapters honestly
+    # -- doctor sees the project and reports every adapter honestly
     doctor = json.loads(invoke("doctor", "--json").stdout)
     assert doctor["ok"] is True
     assert doctor["workflows"]["e2e"].startswith("ok")
-    assert doctor["tools"]["browser"]["available"] is False
+    assert isinstance(doctor["tools"]["browser"]["available"], bool)
 
     # -- run: planning succeeds, then the run pauses at the approval gate
     first = invoke("run", "--workflow", "e2e", "--task", "Add JWT auth", "--runtime", "mock")

@@ -66,14 +66,18 @@ def test_core_never_imports_a_concrete_runtime() -> None:
 
 
 def test_core_never_imports_a_concrete_tool_or_verifier() -> None:
+    """`base`, `descriptor`, `executor` and `engine` are tool/verification-layer
+    *mechanisms* - the interface, the contract, the policy door, the runner. Importing
+    a concrete capability (`tools.git`, `verification.command`) from core would be the
+    violation, because that is where a specific implementation choice lives."""
+    abstractions = {"base", "descriptor", "executor", "engine"}
     offenders: dict[str, set[str]] = {}
     for path in python_files(CORE):
-        bad = {
-            name
-            for name in imports_of(path)
-            if re.match(r"devforge\.(tools|verification)\.(?!base$)\w+$", name)
-            and not name.endswith(".engine")
-        }
+        bad = set()
+        for name in imports_of(path):
+            match = re.match(r"devforge\.(?:tools|verification)\.(\w+)$", name)
+            if match and match.group(1) not in abstractions:
+                bad.add(name)
         if bad:
             offenders[relative(path)] = bad
 

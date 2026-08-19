@@ -90,9 +90,29 @@ def test_workflows_doc_lists_every_builtin_workflow(name: str) -> None:
     assert name in WorkflowLoader.for_project(None).available()
 
 
-def test_unimplemented_adapters_are_documented_as_such() -> None:
+def test_every_tool_is_documented() -> None:
+    from devforge.tools.base import ToolRegistry
+
     tools = (DOCS / "tools.md").read_text(encoding="utf-8")
 
-    assert "NOT implemented" in tools or "NOT IMPLEMENTED" in tools
-    for name in ("browser", "mcp"):
-        assert name in tools
+    for tool in ToolRegistry.default().all():
+        assert tool.name in tools, f"tool '{tool.name}' is undocumented"
+
+
+def test_capabilities_that_do_not_exist_are_still_declared_missing() -> None:
+    """Browser and MCP became real in Phase 2; visual verification did not. The claim
+    that nothing pretends to work has to keep being true as things get implemented."""
+    tools = (DOCS / "tools.md").read_text(encoding="utf-8")
+    from devforge.verification.base import VerifierRegistry
+
+    assert "unavailable" in tools and "never `passed`" in tools
+    assert VerifierRegistry.default().get("visual").kind == "visual"
+
+
+def test_mcp_security_model_is_documented() -> None:
+    mcp = (DOCS / "security" / "mcp.md").read_text(encoding="utf-8")
+
+    assert "Nothing is trusted because it is configured" in mcp
+    assert "not implemented" in mcp.lower()
+    for claim in ("stdio", "allow_tools", "sampling"):
+        assert claim in mcp
