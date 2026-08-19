@@ -126,12 +126,59 @@ the rule:
 A refused skill **fails the step** rather than being silently dropped: a prompt missing
 the instructions it was meant to carry is a different prompt.
 
+## Child process environment
+
+Subprocesses get a **constructed** environment, never the host one. Only variables a
+build genuinely needs are carried over (PATH, HOME, temp dirs, locale, platform
+essentials, non-secret toolchain vars), plus anything named in `process.allow_env`.
+
+Everything else is dropped, secret-shaped or not. Redacting secrets from logs while
+handing them to every child process would have been theatre.
+
+This is not isolation: an allowed interpreter can still read `~/.aws/credentials` from
+disk. It removes the easiest leak and nothing more.
+
+## Network destinations (SSRF)
+
+Any URL fetch on an agent's behalf is an SSRF primitive. A destination must clear three
+checks in order:
+
+1. **Scheme** — http/https only (`file://`, `gopher://` refused).
+2. **Address** — loopback, private, link-local, multicast, reserved and cloud metadata
+   endpoints refused, *including hostnames that resolve to them*.
+3. **Allowlist** — the host must be named in `network.allow_hosts`.
+
+Network access is off by default, so the out-of-the-box answer to "fetch this page" is
+no. **DNS rebinding is not solved**: the address checked can differ from the one
+connected to moments later. Closing that requires pinning the connection to the
+validated address inside the client.
+
+## Untrusted tool output
+
+Text from outside the workspace — MCP responses, fetched pages — is bounded, scanned for
+injection shapes, and wrapped in a labelled fence declaring it data rather than
+instructions. Fence markers inside the content are neutralised so it cannot close the
+fence early.
+
+This mitigates prompt injection; it does not solve it. Assume a determined injection
+gets through and rely on the layers that do not depend on the model behaving.
+
+## Inline code execution
+
+`python -c`, `node -e`, `bash -c` and friends are **approval-gated regardless of the
+allowlist**. An allow rule like `python -c *` reads as narrow and is in fact total:
+`python -c "import os; os.system(...)"` runs anything. No glob over a command line can
+constrain inline code, so a human decides.
+
 ## Known gaps
 
 - No process isolation, no resource limits, no syscall filtering.
-- Tool calls made inside an agent turn are executed by the runtime, not proxied through
-  the DevForge tool layer, so they are governed by the permissions of that runtime
-  rather than by `permissions.yaml`. Closing this is the first roadmap item.
+- Tool calls made inside an *external CLI runtime's* turn are executed by that runtime,
+  not proxied through the DevForge tool layer. A runtime that accepts a `ToolExecutor`
+  (the mock does) has every call policy-checked and audited; one that runs its own tools
+  cannot, and is constrained only by the permissions DevForge derives for it.
+- MCP servers are trusted per configuration, not pinned by content hash the way skills
+  are: a reviewed server that changes is not re-verified.
 - Secrets are protected by deny patterns only. A command that is allowed can read
   anything the user can read.
 - No audit signing: `events.jsonl` is a plain, locally writable file.

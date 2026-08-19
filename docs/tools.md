@@ -48,35 +48,37 @@ Each action builds its own argv and goes through the same policy check as any ot
 command, so `git push` is gated exactly as it would be from the shell tool. There is no
 side door.
 
-## Declared but NOT implemented
+## Browser and MCP
 
-These exist so the interface, the action vocabulary and the workflows that need them are
-real and executable. They report `unavailable` at runtime and return no fabricated data.
-A step that requires one fails immediately with the reason, before the agent is invoked.
+Both are implemented as of Phase 2. Availability is still *discovered*, never assumed:
+the browser tool reports `unavailable` with an installation hint when its driver is
+missing, and never fabricates page content.
 
 ### browser
 
-Actions declared: `open`, `screenshot`, `dom`, `computed_styles`, `assets`, `close`.
+Actions: `fetch`, `text`, `html`, `title`, `screenshot`. Backed by Playwright, which is
+an **optional** dependency:
 
-DevForge ships no browser driver. To implement it:
+```bash
+pip install "devforge[browser]" && playwright install chromium
+```
 
-1. Add a driver dependency (Playwright is the obvious choice).
-2. Subclass or replace `devforge.tools.browser.BrowserTool`, implementing `invoke` for
-   each action and making `availability()` report the real driver state.
-3. Register it: `registry.register("browser", MyBrowserTool(), replace=True)`.
-4. Decide the network policy — browsing is network access, and `network.enabled` is
-   `false` by default.
+Every URL clears the network policy first (scheme, resolved address, host allowlist),
+and network access is off by default. Page content returns fenced and scanned as
+untrusted input. Screenshots are a filesystem write and are checked as one.
 
-The `clone` workflow becomes runnable at that point.
+Not implemented: authenticated sessions, cookie persistence, downloads, and visual
+diffing — so the `clone` workflow still cannot complete, it just gets further.
 
 ### mcp
 
-Actions declared: `list_servers`, `list_tools`, `call`.
+Actions: `list_servers`, `list_tools`, `call`. A direct JSON-RPC client over **stdio**;
+HTTP and SSE transports are refused rather than downgraded, and sampling is deliberately
+not implemented because it would let a server drive the model.
 
-There is no MCP client: no transport, no handshake, no server registry, no per-server
-policy. Implementing it means adding server configuration to the project config, a
-stdio/HTTP client, tool discovery, and policy per server. That is a larger piece of work
-than the MVP justifies, so the seam is declared and the gap is stated.
+Servers are disabled until enabled, tools are denied until named, the launch command
+passes the shell allowlist, and responses are treated as untrusted content. Full model:
+[security/mcp.md](security/mcp.md).
 
 ## Visual verification
 
@@ -118,6 +120,16 @@ adapter translates DevForge tool names into CLI tool permissions
 (`filesystem` → `Read Write Edit Glob Grep`, `git` → `Bash(git *)`), so a step that did
 not ask for `shell` cannot run shell commands.
 
-Note the current limit, stated plainly: tool calls made *inside* an agent turn are the
-runtime, not DevForge, executing them. Routing those calls back through this tool layer
-so each one is policy-checked is the first item on the roadmap.
+Since Phase 2 a runtime may also receive a `ToolExecutor` on its `RuntimeContext`.
+Calls made through it are scope-checked, schema-validated, policy-checked, risk-gated,
+timed out and audited — one door, no way around it. The mock runtime uses it, which is
+what makes the end-to-end security tests meaningful.
+
+The limit, stated plainly: an external CLI runtime executes its own tools inside a turn
+and cannot delegate them. Those calls are governed by that runtime's permission system,
+constrained only by the `--allowedTools` DevForge derives from the step scope.
+
+## Risk levels
+
+Every tool declares one: `read`, `write`, `execute`, `destructive`. A `destructive` tool
+routes through an approval gate in the executor even when policy would allow the call.

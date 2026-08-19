@@ -99,7 +99,8 @@ src/devforge/
 │   └── registry/          generic Registry + skill discovery
 ├── runtime/               AgentRuntime interface, MockAgentRuntime, ClaudeCodeRuntime
 ├── agents/                AgentSpec model + prompt composition
-├── tools/                 Tool interface: filesystem, shell, git (real); browser, mcp (declared)
+├── tools/                 Tool interface + executor: filesystem, shell, git, browser
+├── mcp/                   MCP client, server registry and tool bridge (stdio)
 ├── verification/          Verifier interface, command verifier, visual (declared)
 ├── policy/                permission + approval policy engine
 ├── approval/              persistent human gates
@@ -220,6 +221,14 @@ What the policy layer does:
 - Secrets are redacted from events **and** persisted state at the write boundary
   (known credential shapes, secret-named keys, private keys, URL credentials).
 - Third-party skills are inspected at consumption; a critical finding fails the step.
+- Child processes get a **constructed** environment - ambient credentials are never
+  handed to a subprocess.
+- URL fetches clear an SSRF check (scheme, resolved address, host allowlist) and network
+  access is off by default.
+- Output from outside the workspace is bounded, scanned for injection, and fenced as
+  data before it can reach a prompt.
+- Inline code (`python -c`, `node -e`) is approval-gated regardless of the allowlist: no
+  glob can constrain what inline code does.
 - No shell is ever spawned — `&&`, `|`, `$(…)` are rejected, not interpreted.
 - Filesystem paths fully resolved (symlinks included) and confined to the workspace,
   with deny rules for `.env`, secrets, keys and `.git`.
@@ -264,18 +273,21 @@ Threats: [docs/security/threat-model.md](docs/security/threat-model.md)
 Stated plainly, because a harness that hides its gaps is worse than useless:
 
 - **No sandbox.** As above.
-- **Browser automation is not implemented.** `tools/browser.py` is a declared adapter
-  that reports `unavailable`. The `clone` workflow therefore halts at its first step.
-- **MCP is not implemented.** `tools/mcp.py` declares the seam; there is no client,
-  transport or server registry.
+- **Browser automation** works through Playwright, an optional extra
+  (`pip install "devforge[browser]"`). Without the driver the tool reports `unavailable`
+  rather than fabricating page content.
+- **MCP** works over stdio only. HTTP/SSE transports are refused rather than downgraded,
+  and sampling is deliberately unimplemented - it would let a server drive the model.
+  See [docs/security/mcp.md](docs/security/mcp.md).
 - **Visual verification is not implemented.** `verification/visual.py` reports
   `unavailable` and never `passed`.
 - **One real runtime adapter.** Claude Code. Codex/OpenCode adapters are interface
   work, not present.
-- **Agents do not drive DevForge tools yet.** The tool layer is real, policy-checked
-  and tested, and it scopes what a runtime may do (Claude Code tool permissions are
-  derived from a step's `tools:`). Tool *calls* originating from inside an agent turn
-  are the runtime's own; DevForge does not yet proxy them.
+- **Agent tool calls are proxied only for runtimes that delegate.** A runtime given a
+  `ToolExecutor` has every call scope-checked, schema-validated, policy-checked,
+  risk-gated, timed out and audited. An external CLI runtime executes its own tools
+  inside a turn and cannot delegate; those calls are constrained only by the tool
+  permissions DevForge derives for it.
 - **State is files, single machine, no concurrency control.** Two simultaneous runs in
   one project can interleave writes to `state.json`.
 - **Memory is markdown, not retrieval.** No embeddings, no vector store, by design.
@@ -292,7 +304,7 @@ Stated plainly, because a harness that hides its gaps is worse than useless:
 ## Development
 
 ```bash
-python -m pytest -q      # 172 tests, no network, no paid API calls
+python -m pytest -q      # 366 tests, no network, no paid API calls
 ruff check . && ruff format --check .
 ```
 
