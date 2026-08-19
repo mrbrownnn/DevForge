@@ -83,8 +83,16 @@ class VerificationEngine:
                 summary=f"no verifier registered for kind '{spec.kind}'",
                 output_excerpt=f"known kinds: {', '.join(self.registry.names())}",
             )
+        ctx.logger.info(
+            "verification.start",
+            verifier=spec.id,
+            kind=spec.kind,
+            step=ctx.step_id or None,
+            attempt=ctx.attempt,
+            required=spec.required,
+        )
         try:
-            return await verifier.run(spec, ctx)
+            result = await verifier.run(spec, ctx)
         except Exception as exc:  # a broken verifier must not abort the whole run
             return VerificationResult(
                 verifier=spec.id,
@@ -96,6 +104,17 @@ class VerificationEngine:
                 summary=f"verifier raised {type(exc).__name__}",
                 output_excerpt=str(exc),
             )
+        ctx.logger.info(
+            "verification.finish",
+            verifier=spec.id,
+            kind=spec.kind,
+            step=ctx.step_id or None,
+            attempt=ctx.attempt,
+            status=result.status.value,
+            exit_code=result.exit_code,
+            duration_ms=result.duration_ms,
+        )
+        return result
 
     async def run(self, specs: list[VerifierSpec], ctx: VerificationContext) -> VerificationReport:
         """Run all verifiers concurrently and aggregate. Order of results is stable."""

@@ -340,8 +340,10 @@ class Orchestrator:
             skills=invocation.skills,
             tools=invocation.tools,
         )
+        # Always an explicit subset: a step that declared no tools gets an empty scope,
+        # never the whole registry by omission.
         result = await self.runtime.execute(
-            invocation, execution.for_runtime(self.tools.subset(tools) if tools else None)
+            invocation, execution.for_runtime(self.tools.subset(tools))
         )
         logger.info(
             "agent.result",

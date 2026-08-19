@@ -24,6 +24,7 @@ from devforge.policy.engine import PolicyEngine
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from devforge.runtime.base import RuntimeContext
     from devforge.tools.base import ToolContext, ToolRegistry
+    from devforge.tools.executor import ToolExecutor
     from devforge.verification.base import VerificationContext
 
 
@@ -58,10 +59,30 @@ class ExecutionContext:
     def for_runtime(self, tools: ToolRegistry | None = None) -> RuntimeContext:
         from devforge.runtime.base import RuntimeContext
 
+        scoped = tools if tools is not None else self.tools
         return RuntimeContext(
             workspace=self.workspace,
-            tools=tools if tools is not None else self.tools,
+            tools=scoped,
+            executor=self.executor(scoped),
             logger=self.logger,
+        )
+
+    def executor(self, tools: ToolRegistry | None = None) -> ToolExecutor | None:
+        """The policy-enforcing door for tool calls, scoped to this step.
+
+        A step that declared no tools gets an executor with an empty scope rather
+        than none: the agent can still attempt a call, and the refusal is recorded.
+        Silence would hide the attempt.
+        """
+        from devforge.tools.executor import ToolExecutor
+
+        if tools is None and self.tools is None:
+            return None
+        scoped = tools if tools is not None else self.tools
+        return ToolExecutor(
+            registry=scoped if scoped is not None else self.tools,
+            context=self.for_tool(),
+            allowed=tuple(scoped.names()) if scoped is not None else (),
         )
 
     def for_tool(self) -> ToolContext:
