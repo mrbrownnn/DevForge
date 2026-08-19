@@ -60,6 +60,35 @@ class PolicyDecision:
 #: arguments - which is confusing at best and an attempted bypass at worst.
 SHELL_METACHARACTERS = frozenset({"&&", "||", "|", ";", "&", ">", ">>", "<", "`"})
 
+#: Command substitution never appears legitimately in an argv - DevForge does not
+#: spawn a shell, so these can only be an attempt to widen an allow rule.
+SUBSTITUTION_MARKERS = ("$(", "`", "${")
+
+#: Flags that hand an interpreter arbitrary code inline. An allow rule like
+#: "python -c *" reads as narrow and is in fact total: `python -c "import os;
+#: os.system(...)"` runs anything. These are gated on their own, regardless of what
+#: the allowlist says, because no glob over a command line can constrain them.
+INLINE_CODE_FLAGS = frozenset({"-c", "-e", "--eval", "--exec", "-Command", "--command", "-E"})
+INLINE_CODE_INTERPRETERS = (
+    "python",
+    "python3",
+    "py",
+    "node",
+    "nodejs",
+    "deno",
+    "bun",
+    "ruby",
+    "perl",
+    "php",
+    "bash",
+    "sh",
+    "zsh",
+    "dash",
+    "powershell",
+    "pwsh",
+    "osascript",
+)
+
 DESTRUCTIVE_SHELL_GATE = "destructive_command"
 DESTRUCTIVE_FS_GATE = "destructive_filesystem"
 NETWORK_GATE = "network_access"
@@ -125,6 +154,15 @@ class PolicyEngine:
                 Effect.DENY,
                 f"argument(s) {smuggled} look like shell syntax; DevForge executes argv "
                 "directly and never spawns a shell, so chaining is not supported",
+            )
+
+        inline = _inline_code_execution(argv)
+        if inline:
+            return PolicyDecision(
+                Effect.REQUIRE_APPROVAL,
+                f"{inline} runs code supplied on the command line; an allowlist pattern "
+                "cannot constrain what that code does, so it needs a human decision",
+                gate=DESTRUCTIVE_SHELL_GATE,
             )
 
         for pattern in shell.deny:
@@ -244,8 +282,38 @@ def _relative_to(path: Path, root: Path) -> str:
 
 
 def _shell_syntax_tokens(argv: list[str]) -> list[str]:
-    found = [arg for arg in argv if arg in SHELL_METACHARACTERS or arg.startswith("$(")]
+    """Arguments that look like shell syntax rather than data.
+
+    Three shapes are refused: a bare operator token, a token trailing an operator
+    (``status;`` - how a chained command survives shlex.split), and command
+    substitution anywhere. A value that merely *contains* an ampersand mid-string,
+    such as a commit message, is left alone: it is data, and treating it as an
+    attack would make the harness unusable for no security gain.
+    """
+    found: list[str] = []
+    for arg in argv:
+        if (
+            arg in SHELL_METACHARACTERS
+            or any(marker in arg for marker in SUBSTITUTION_MARKERS)
+            or arg.endswith((";", "&", "|"))
+            and len(arg) > 1
+        ):
+            found.append(arg)
     return sorted(set(found))
+
+
+def _inline_code_execution(argv: list[str]) -> str:
+    """Return a description when this argv asks an interpreter to run inline code."""
+    if len(argv) < 2:
+        return ""
+    executable = Path(argv[0]).name.lower()
+    executable = executable[:-4] if executable.endswith(".exe") else executable
+    if not any(executable.startswith(name) for name in INLINE_CODE_INTERPRETERS):
+        return ""
+    for arg in argv[1:]:
+        if arg in INLINE_CODE_FLAGS:
+            return f"'{executable} {arg}'"
+    return ""
 
 
 @lru_cache(maxsize=512)
