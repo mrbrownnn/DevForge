@@ -90,7 +90,13 @@ def init(
     render.success(f"initialised DevForge project '{config.name}' ({config.project_id})")
     render.info(f"  state:   {store.devforge_dir}")
     render.info(f"  runtime: {config.default_runtime}")
-    render.info('\nNext: devforge doctor, then devforge run --workflow feature --task "..."')
+    render.info(
+        "\nNext:\n"
+        "  devforge doctor\n"
+        '  devforge run --workflow demo --task "Add authentication" --interactive\n'
+        "\nThe demo workflow completes in any project. The feature workflow runs your real\n"
+        "tests, linters and build, so it needs a project that has them."
+    )
 
 
 # --------------------------------------------------------------------------- plan
@@ -208,16 +214,16 @@ def run(
         _fail(str(exc))
         return
 
-    render.render_steps(outcome.task)
-    render.render_approvals(outcome.task)
-    render.render_errors(outcome.task)
+    render.render_steps(record)
+    render.render_approvals(record)
+    render.render_errors(record)
 
     if outcome.completed:
-        render.success(f"\nrun completed: {outcome.task.task_id}")
+        render.success(f"\nrun completed: {outcome.task_id}")
         return
     if outcome.awaiting_approval:
         render.info(f"\n[yellow]paused[/yellow] {outcome.reason}")
-        render.info(f"then: devforge run --resume {outcome.task.task_id}")
+        render.info(f"then: devforge run --resume {outcome.task_id}")
         raise typer.Exit(code=2)
     render.error(f"run failed at '{outcome.stopped_at}': {outcome.reason}")
     raise typer.Exit(code=1)

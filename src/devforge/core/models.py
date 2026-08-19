@@ -312,3 +312,60 @@ class Task(_Model):
     @property
     def completed_steps(self) -> list[str]:
         return [s.step_id for s in self.steps if s.status is StepStatus.PASSED]
+
+
+class TaskResult(_Model):
+    """The outcome of executing a workflow against a task.
+
+    A summary view over :class:`Task`, returned by the orchestrator and rendered by
+    the CLI. The task record remains the full history; this is what a caller needs
+    in order to decide what happened and what to do next.
+    """
+
+    task_id: str
+    workflow: str
+    status: TaskStatus
+    stopped_at: str | None = None
+    reason: str = ""
+    steps_passed: list[str] = Field(default_factory=list)
+    steps_failed: list[str] = Field(default_factory=list)
+    pending_gates: list[str] = Field(default_factory=list)
+    verification_counts: dict[str, int] = Field(default_factory=dict)
+    attempts_used: int = 0
+    finished_at: datetime = Field(default_factory=utcnow)
+
+    @classmethod
+    def from_task(
+        cls, task: Task, *, stopped_at: str | None = None, reason: str = ""
+    ) -> TaskResult:
+        counts: dict[str, int] = {}
+        for result in task.verification_results:
+            counts[result.status.value] = counts.get(result.status.value, 0) + 1
+        return cls(
+            task_id=task.task_id,
+            workflow=task.workflow,
+            status=task.status,
+            stopped_at=stopped_at,
+            reason=reason,
+            steps_passed=[s.step_id for s in task.steps if s.status is StepStatus.PASSED],
+            steps_failed=[
+                s.step_id
+                for s in task.steps
+                if s.status in {StepStatus.FAILED, StepStatus.REJECTED}
+            ],
+            pending_gates=[a.gate for a in task.approvals if a.status is ApprovalStatus.PENDING],
+            verification_counts=counts,
+            attempts_used=sum(step.attempt_count for step in task.steps),
+        )
+
+    @property
+    def completed(self) -> bool:
+        return self.status is TaskStatus.COMPLETED
+
+    @property
+    def awaiting_approval(self) -> bool:
+        return self.status is TaskStatus.AWAITING_APPROVAL
+
+    @property
+    def failed(self) -> bool:
+        return self.status is TaskStatus.FAILED
