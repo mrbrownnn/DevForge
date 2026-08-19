@@ -1,0 +1,113 @@
+# Workflows
+
+A workflow is declarative YAML. Resolution order:
+`./.devforge/workflows/<name>.yaml` → `./workflows/<name>.yaml` → built-in.
+
+## Schema
+
+```yaml
+name: feature              # defaults to the filename
+version: 1.0.0
+description: ...
+tags: [default]
+
+verifiers:                 # available to the steps of this workflow
+  - id: tests
+    kind: tests            # command | tests | lint | typecheck | build | e2e | security | visual
+    description: ...
+    argv: [python, -m, pytest, -q]
+    cwd: null              # defaults to the workspace root
+    timeout_s: 900
+    required: true         # false = failure is recorded but does not block
+    success_exit_codes: [0]
+
+steps:
+  - id: implementation     # unique within the workflow
+    name: Implementation   # defaults to a title-cased id
+    kind: agent            # agent | verify | approval
+    description: ...
+    agent: coder           # required for kind: agent
+    skills: [backend]      # overrides the default skills of the agent
+    tools: [filesystem, shell, git]
+    prompt: ...            # appended to the composed prompt
+    outputs: [auth.py]     # declared, for the prompt and for review
+    verify: [tests]        # verifier ids
+    max_attempts: 3        # bound on the agent + verify repair loop
+    gate: architecture     # required for kind: approval
+    on_failure: fail       # fail (default) | continue
+```
+
+Unknown keys are rejected at load time, with the file path and the offending field in
+the message.
+
+## Step kinds
+
+**agent** — invoke an agent, then run `verify`. On failure the agent is re-invoked in
+repair mode with the output of the failing verifiers, up to `max_attempts`.
+
+**verify** — verifiers only. Always one attempt: nothing would change on a second run.
+
+**approval** — pause for a human at `gate`. Gates should be declared in
+`policies/approvals.yaml`; an undeclared gate is treated as blocking (fail closed).
+
+## Verification semantics
+
+- The verifiers of a step run **concurrently**.
+- The step passes when no *required* verifier reports anything but `passed`/`skipped`.
+- `unavailable` on a required verifier is a **failure**, never a pass.
+- Every result is persisted with exit code, duration and a tail of the output.
+
+## Built-in workflows
+
+| Workflow | Steps | Notes |
+| --- | --- | --- |
+| `feature` | requirements → planning → **approval** → implementation → unit tests → verification → review → **approval** | The default |
+| `bugfix` | reproduce → diagnose → **approval** → fix → regression test → verification | The regression test is the proof |
+| `refactor` | analyse → **baseline verify** → plan → **approval** → refactor → tests → verification | Baseline first, or there is no safety net |
+| `clone` | recon → design analysis → **approval** → implementation → visual verification → **approval** | Halts at `recon`: the browser tool is not implemented |
+
+## Writing your own
+
+```bash
+mkdir -p workflows
+```
+
+`workflows/hotfix.yaml`:
+
+```yaml
+name: hotfix
+verifiers:
+  - id: tests
+    kind: tests
+    argv: [python, -m, pytest, -q, tests/unit]
+steps:
+  - id: fix
+    agent: coder
+    tools: [filesystem, shell]
+    verify: [tests]
+    max_attempts: 2
+  - id: sign-off
+    kind: approval
+    gate: final_review
+```
+
+Then:
+
+```bash
+devforge plan --workflow hotfix
+```
+
+`devforge plan` validates the file, lists unknown agents and skills, warns about
+unavailable tools and shows the approval gates — before anything executes.
+
+## Resuming
+
+A run that stops at a gate leaves the task `awaiting_approval` and exits with code 2.
+
+```bash
+devforge approve --gate architecture --by you
+devforge run --resume task_ab12cd34
+```
+
+Steps already marked `passed` are skipped, so no agent work and no billed call is
+repeated.
