@@ -1,0 +1,571 @@
+# DevForge skill source registry
+#
+# Machine-readable catalogue of THIRD-PARTY skill sources. Every entry is data about
+# an external repository - nothing here is installed, trusted, or executed by virtue
+# of being listed. Disposition and trust tier are decisions; everything else is
+# evidence.
+#
+# Provenance of the evidence: GitHub REST API (repos, contents, git/trees), queried
+# 2026-08-19. Fields that were NOT verified are recorded as null or "unknown" rather
+# than guessed. Star and issue counts are a point-in-time snapshot and are expected
+# to drift; the commit pin is the field that matters.
+#
+# Schema is validated by devforge.supplychain.registry - see tests/test_registry_file.py.
+
+version: 1
+generated_at: "2026-08-19"
+
+evidence:
+  method: github-rest-api
+  verified_at: "2026-08-19"
+  verified_fields: [license, maintainer, activity, head_commit, skill_names, file_inventory]
+  unverified_fields: [known_vulnerabilities, transitive_dependencies, runtime_behaviour]
+  notes: >
+    No CVE database, advisory feed, or dynamic analysis was consulted. "no_known_issues"
+    below means "nothing found in the repository issue tracker metadata we read", NOT
+    "audited and clean". Treat every source as untrusted until a DevForge review
+    records otherwise.
+
+# Trust tiers govern what a source may do once installed. They are DevForge policy,
+# not a property of the upstream project.
+trust_tiers:
+  untrusted:
+    description: Default for every new source. Instructions only.
+    allow_scripts: false
+    allow_network: false
+    allow_install_commands: false
+    requires_approval: true
+  reviewed:
+    description: A human read the skill content and recorded the review in the registry.
+    allow_scripts: false
+    allow_network: false
+    allow_install_commands: false
+    requires_approval: true
+  audited:
+    description: Content reviewed AND executable surface audited at a pinned commit.
+    allow_scripts: true
+    allow_network: false
+    allow_install_commands: false
+    requires_approval: true
+  first_party:
+    description: Skills shipped inside DevForge itself.
+    allow_scripts: true
+    allow_network: false
+    allow_install_commands: false
+    requires_approval: false
+
+# How DevForge may consume a source.
+#   reference        - documented, fetched on demand, never copied into this repo
+#   vendor           - copied in at a pinned commit, with license notice
+#   dynamic_install  - fetched at runtime (NOT implemented; recorded for completeness)
+#   rejected         - do not use, with a reason
+dispositions: [reference, vendor, dynamic_install, rejected]
+
+defaults:
+  trust_tier: untrusted
+  disposition: reference
+  requires_approval: true
+  allow_scripts: false
+
+sources:
+  # ------------------------------------------------------------------ first-party
+  - id: anthropics-skills
+    name: Anthropic Agent Skills
+    repository: https://github.com/anthropics/skills
+    maintainer:
+      name: Anthropic
+      type: Organization
+      identity_basis: github-organization-account
+    license:
+      spdx: null
+      repo_level_license_file: false
+      per_skill_license: Apache-2.0
+      notes: >
+        No LICENSE file at the repository root (verified at HEAD). Individual skills
+        ship their own LICENSE.txt - webapp-testing/LICENSE.txt is Apache-2.0 and the
+        SKILL.md frontmatter points at it. Licensing must therefore be resolved
+        per skill, not per repository.
+    activity:
+      stars: 170394
+      forks: 20273
+      open_issues: 1120
+      created_at: "2025-09-22"
+      last_push: "2026-08-18"
+      archived: false
+    pin:
+      commit: 0a64e398ec6bb34a494f0c347e8ccae53a862f8e
+      commit_date: "2026-08-18"
+      verified_at: "2026-08-19"
+    content_hash: null   # computed at install time, see docs/security/skill-supply-chain.md
+    install_mechanism: claude-plugin-marketplace   # .claude-plugin/marketplace.json
+    supported_agents: [claude-code]
+    skills:
+      - academy-guide
+      - algorithmic-art
+      - brand-guidelines
+      - canvas-design
+      - claude-api
+      - discernment-nudge
+      - doc-coauthoring
+      - docx
+      - frontend-design
+      - internal-comms
+      - mcp-builder
+      - pdf
+      - pptx
+      - skill-creator
+      - slack-gif-creator
+      - theme-factory
+      - web-artifacts-builder
+      - webapp-testing
+      - xlsx
+    capabilities: [document-generation, frontend-design, mcp-authoring, browser-testing, skill-authoring]
+    executable_surface:
+      files_total: 508
+      by_extension: { ".py": 70, ".sh": 2, ".js": 1 }
+      opaque_archives: 0
+    dependencies:
+      declared: unknown
+      observed: [python3, playwright, node]
+      notes: Skill scripts import third-party Python packages; no lockfile in the repo.
+    security_concerns:
+      - id: instruction-to-execute-unread-code
+        severity: high
+        evidence: >
+          skills/webapp-testing/SKILL.md instructs the agent "Always run scripts with
+          --help first" and "DO NOT read the source until you try running the script
+          first". This is an explicit instruction to execute code before inspecting it,
+          which directly contradicts the DevForge inspection model.
+      - id: large-script-surface
+        severity: medium
+        evidence: 70 Python scripts under skills/*/scripts, executed with agent privileges.
+      - id: license-ambiguity
+        severity: medium
+        evidence: No root LICENSE; redistribution terms must be resolved per skill.
+    known_issues: no_known_issues_recorded
+    disposition: reference
+    trust_tier: untrusted
+    review:
+      status: not_reviewed
+      reviewer: null
+      reviewed_at: null
+    rationale: >
+      Highest-quality reference for skill format and for the Playwright (webapp-testing)
+      and MCP (mcp-builder) categories. Referenced rather than vendored because of the
+      root-license ambiguity and the script surface. Any use of its scripts requires an
+      audit and a move to the audited tier.
+
+  - id: obra-superpowers
+    name: Superpowers
+    repository: https://github.com/obra/superpowers
+    maintainer:
+      name: obra (Jesse Vincent)
+      type: User
+      identity_basis: github-user-account
+    license:
+      spdx: MIT
+      repo_level_license_file: true
+      per_skill_license: null
+      notes: Permissive; compatible with vendoring into an MIT project with attribution.
+    activity:
+      stars: 273950
+      forks: 24522
+      open_issues: 288
+      created_at: "2025-10-09"
+      last_push: "2026-08-13"
+      archived: false
+    pin:
+      commit: b36e0829c6d0140e93cfef2ca599b1b07d4a7797
+      commit_date: "2026-08-12"
+      verified_at: "2026-08-19"
+    content_hash: null
+    install_mechanism: claude-plugin-marketplace
+    supported_agents: [claude-code, codex, cursor, devin, hermes, kimi, opencode, gemini]
+    skills:
+      - brainstorming
+      - dispatching-parallel-agents
+      - executing-plans
+      - finishing-a-development-branch
+      - receiving-code-review
+      - requesting-code-review
+      - subagent-driven-development
+      - systematic-debugging
+      - test-driven-development
+      - using-git-worktrees
+      - using-superpowers
+      - verification-before-completion
+      - writing-plans
+      - writing-skills
+    capabilities: [development-methodology, tdd, code-review, debugging, planning, subagent-orchestration]
+    executable_surface:
+      files_total: 255
+      by_extension: { ".sh": 41, ".js": 10, ".py": 6, ".mjs": 2, ".ts": 2, ".cmd": 1 }
+      opaque_archives: 0
+    dependencies:
+      declared: package.json
+      observed: [bash, node, git]
+      notes: Ships hooks/ (session-start hook, hooks.json) that execute on agent session start.
+    security_concerns:
+      - id: session-start-hook-execution
+        severity: high
+        evidence: >
+          hooks/hooks.json, hooks/run-hook.cmd and hooks/session-start execute automatically
+          when an agent session begins - code execution without a per-invocation decision.
+          DevForge must never install hooks; only skill instruction content is consumable.
+      - id: shell-script-surface
+        severity: medium
+        evidence: 41 shell scripts, the largest shell surface of any source reviewed.
+      - id: single-maintainer
+        severity: medium
+        evidence: Individual account; bus factor and account-compromise risk concentrate on one identity.
+    known_issues: no_known_issues_recorded
+    disposition: reference
+    trust_tier: untrusted
+    review:
+      status: not_reviewed
+      reviewer: null
+      reviewed_at: null
+    rationale: >
+      The strongest methodology content in the ecosystem and closest in spirit to the
+      DevForge verification loop (verification-before-completion, TDD, systematic-debugging).
+      MIT makes vendoring legally simple, but the hook and shell surface means only
+      instruction text should ever be consumed, and never the plugin as a whole.
+
+  - id: trailofbits-skills
+    name: Trail of Bits Security Skills
+    repository: https://github.com/trailofbits/skills
+    maintainer:
+      name: Trail of Bits
+      type: Organization
+      identity_basis: github-organization-account
+    license:
+      spdx: CC-BY-SA-4.0
+      repo_level_license_file: true
+      per_skill_license: null
+      notes: >
+        Share-alike CONTENT license. Copying this text into DevForge would impose
+        CC-BY-SA obligations on the derived documentation - a real reason to reference
+        rather than vendor.
+    activity:
+      stars: 6663
+      forks: null
+      open_issues: 27
+      created_at: null
+      last_push: "2026-08-19"
+      archived: false
+    pin:
+      commit: 07bce8a2c8ccc56c5b44b7067a04b8bf46128f05
+      commit_date: "2026-08-19"
+      verified_at: "2026-08-19"
+    content_hash: null
+    install_mechanism: claude-plugin-marketplace
+    supported_agents: [claude-code]
+    skills:
+      - supply-chain-risk-auditor
+      - static-analysis
+      - semgrep-rule-creator
+      - semgrep-rule-variant-creator
+      - variant-analysis
+      - vulnerability-triage-brocards
+      - mutation-testing
+      - property-based-testing
+      - differential-review
+      - rust-review
+      - c-review
+      - insecure-defaults
+      - agentic-actions-auditor
+      - spec-to-code-compliance
+      - yara-authoring
+      - zeroize-audit
+      - modern-python
+      - gh-cli
+      - github-triage
+      - devcontainer-setup
+    capabilities: [security-review, static-analysis, supply-chain-audit, mutation-testing, property-based-testing]
+    executable_surface:
+      files_total: null
+      by_extension: {}
+      opaque_archives: 0
+      notes: 41 plugins under plugins/; per-plugin inventory not enumerated in this pass.
+    dependencies:
+      declared: unknown
+      observed: [semgrep, ruff, python3, gh]
+      notes: Several skills orchestrate external analysis tools that must be installed separately.
+    security_concerns:
+      - id: license-share-alike
+        severity: medium
+        evidence: CC-BY-SA-4.0 propagates to derivative documentation if vendored.
+      - id: tool-invocation-surface
+        severity: low
+        evidence: >
+          Skills drive external binaries (semgrep, gh). Under DevForge those invocations
+          are subject to the shell allowlist, so the risk is containable.
+      - id: mirror-proliferation
+        severity: medium
+        evidence: >
+          GitHub search surfaces multiple unofficial mirrors and redistributions
+          (botnotstrawberry/trailofbits-skills, RUSHYOP/mirror-trailofbits-skills,
+          chenxihuang1028-a11y/variant-analysis). Name-based resolution would be unsafe;
+          only the canonical URL plus commit pin identifies this source.
+    known_issues: no_known_issues_recorded
+    disposition: reference
+    trust_tier: untrusted
+    review:
+      status: not_reviewed
+      reviewer: null
+      reviewed_at: null
+    rationale: >
+      The most credible security-skill source found, from an established security firm.
+      Reference-only because of CC-BY-SA. Its supply-chain-risk-auditor is prior art
+      worth studying for the DevForge inspector.
+
+  - id: addyosmani-agent-skills
+    name: Production Engineering Skills
+    repository: https://github.com/addyosmani/agent-skills
+    maintainer:
+      name: addyosmani (Addy Osmani)
+      type: User
+      identity_basis: github-user-account
+    license:
+      spdx: MIT
+      repo_level_license_file: true
+      per_skill_license: null
+      notes: null
+    activity:
+      stars: 88495
+      forks: null
+      open_issues: null
+      created_at: null
+      last_push: "2026-08-14"
+      archived: false
+    pin:
+      commit: df1edb2e05487d0aa6d93c747141e0aed1187f25
+      commit_date: "2026-08-14"
+      verified_at: "2026-08-19"
+    content_hash: null
+    install_mechanism: git-clone
+    supported_agents: [claude-code, unknown]
+    skills:
+      - api-and-interface-design
+      - browser-testing-with-devtools
+      - ci-cd-and-automation
+      - code-review-and-quality
+      - context-engineering
+      - debugging-and-error-recovery
+      - documentation-and-adrs
+      - frontend-ui-engineering
+      - git-workflow-and-versioning
+      - observability-and-instrumentation
+      - performance-optimization
+      - planning-and-task-breakdown
+      - security-and-hardening
+      - spec-driven-development
+      - test-driven-development
+    capabilities: [ci-cd, observability, testing, code-review, architecture, performance]
+    executable_surface:
+      files_total: null
+      by_extension: {}
+      opaque_archives: 0
+      notes: Predominantly instruction markdown; not inventoried file-by-file in this pass.
+    dependencies:
+      declared: unknown
+      observed: []
+      notes: null
+    security_concerns:
+      - id: single-maintainer
+        severity: medium
+        evidence: Individual account with very high reach; an account compromise would have wide blast radius.
+      - id: no-inventory
+        severity: low
+        evidence: Executable surface not yet enumerated - must be inspected before any use beyond reading.
+    known_issues: no_known_issues_recorded
+    disposition: reference
+    trust_tier: untrusted
+    review:
+      status: not_reviewed
+      reviewer: null
+      reviewed_at: null
+    rationale: >
+      Closest match to the DevForge skill taxonomy (CI/CD, observability, testing,
+      review) and the only credible source found covering the DevOps category.
+
+  - id: vercel-agent-skills
+    name: Vercel Agent Skills
+    repository: https://github.com/vercel-labs/agent-skills
+    maintainer:
+      name: Vercel Labs
+      type: Organization
+      identity_basis: github-organization-account
+    license:
+      spdx: null
+      repo_level_license_file: false
+      per_skill_license: unknown
+      notes: No LICENSE file at HEAD; redistribution terms are undetermined.
+    activity:
+      stars: 30202
+      forks: 2693
+      open_issues: 172
+      created_at: "2025-12-08"
+      last_push: "2026-08-18"
+      archived: false
+    pin:
+      commit: b8caa260a420a73042e35521de4b5c8baf6446cc
+      commit_date: "2026-08-12"
+      verified_at: "2026-08-19"
+    content_hash: null
+    install_mechanism: skills-sh   # skills.sh.json, https://skills.sh
+    supported_agents: [claude-code, unknown]
+    skills:
+      - composition-patterns
+      - deploy-to-vercel
+      - react-best-practices
+      - react-native-skills
+      - react-view-transitions
+      - vercel-cli-with-tokens
+      - vercel-optimize
+      - web-design-guidelines
+      - writing-guidelines
+    capabilities: [react, frontend, deployment, vendor-cli]
+    executable_surface:
+      files_total: 475
+      by_extension: { ".mjs": 155, ".ts": 8, ".sh": 2 }
+      opaque_archives: 6
+    dependencies:
+      declared: package.json
+      observed: [node, vercel-cli]
+      notes: null
+    security_concerns:
+      - id: credential-handling-skill
+        severity: high
+        evidence: >
+          The skill vercel-cli-with-tokens is, by name and purpose, about handling API
+          tokens. Any skill that touches credentials must be treated as high risk and
+          must never run under an auto-approved gate.
+      - id: opaque-archives
+        severity: high
+        evidence: >
+          Six .zip bundles are committed alongside their unpacked directories. Archives
+          defeat diff review: the reviewed source and the shipped artefact can diverge.
+          DevForge inspection must reject archives outright.
+      - id: third-party-installer
+        severity: medium
+        evidence: Installation flows through skills.sh, an external service outside the GitHub trust path.
+      - id: no-license
+        severity: medium
+        evidence: No LICENSE file; vendoring would be legally unsound.
+      - id: deployment-side-effects
+        severity: high
+        evidence: deploy-to-vercel performs outward-facing actions with real-world consequences.
+    known_issues: no_known_issues_recorded
+    disposition: rejected
+    trust_tier: untrusted
+    review:
+      status: not_reviewed
+      reviewer: null
+      reviewed_at: null
+    rationale: >
+      Rejected for Phase 0. The combination of opaque archives, a credential-handling
+      skill, a deployment skill with real side effects, an off-GitHub installer and no
+      license is precisely the profile the supply-chain model exists to refuse. Nothing
+      about the quality of the content - the risk profile is simply wrong for a default.
+
+  - id: ui-ux-pro-max
+    name: UI/UX Pro Max
+    repository: https://github.com/nextlevelbuilder/ui-ux-pro-max-skill
+    maintainer:
+      name: NextLevelBuilder
+      type: Organization
+      identity_basis: github-organization-account
+    license:
+      spdx: MIT
+      repo_level_license_file: true
+      per_skill_license: null
+      notes: skill.json declares MIT and version 2.13.0.
+    activity:
+      stars: 118086
+      forks: null
+      open_issues: 82
+      created_at: null
+      last_push: "2026-08-18"
+      archived: false
+    pin:
+      commit: 8a1a6d857332da32252d77365da90c3f6293b47b
+      commit_date: "2026-08-18"
+      verified_at: "2026-08-19"
+    content_hash: null
+    install_mechanism: claude-plugin-marketplace
+    supported_agents: [claude-code]
+    skills: [ui-ux-pro-max]
+    capabilities: [ui-design, design-systems, color-palettes, typography, charting]
+    executable_surface:
+      files_total: null
+      by_extension: {}
+      opaque_archives: 0
+      notes: Ships cli/ and scripts/ directories; not inventoried in this pass.
+    dependencies:
+      declared: skill.json
+      observed: [node]
+      notes: null
+    security_concerns:
+      - id: clone-and-typosquat-proliferation
+        severity: high
+        evidence: >
+          Search surfaces many near-identical repositories (bbylw/ui-ux-pro-max-skill-cn,
+          ganavisk/nextlevelbuilder-ui-ux-pro-max-skill-Public, dualseason/ui-ux-pro-max-skill).
+          Resolving this skill by NAME would be a coin flip; only the canonical URL plus
+          commit pin is safe.
+      - id: bundled-cli
+        severity: medium
+        evidence: A shipped CLI is executable code, not instruction content.
+      - id: external-homepage
+        severity: low
+        evidence: skill.json points at uupm.cc; content served there is outside the pinned repository.
+    known_issues: no_known_issues_recorded
+    disposition: reference
+    trust_tier: untrusted
+    review:
+      status: not_reviewed
+      reviewer: null
+      reviewed_at: null
+    rationale: >
+      Genuinely useful design intelligence and the clearest real-world example of why
+      DevForge resolves sources by URL plus commit rather than by name.
+
+# Discovery aids. NOT skill sources - unvetted aggregator lists, recorded so their role
+# is explicit and nobody mistakes inclusion in one for a security signal.
+discovery_sources:
+  - repository: https://github.com/ComposioHQ/awesome-claude-skills
+    stars: 72785
+    license: null
+    role: aggregator
+    caution: Curation is popularity-based, not security-based. Never resolve a source from a list alone.
+  - repository: https://github.com/travisvn/awesome-claude-skills
+    stars: 14714
+    license: null
+    role: aggregator
+    caution: As above.
+  - repository: https://github.com/trailofbits/skills-curated
+    stars: 488
+    license: CC-BY-SA-4.0
+    pin:
+      commit: 6d05be4889017b06fb15069f371afd220daffb62
+      verified_at: "2026-08-19"
+    role: curated-marketplace
+    caution: >
+      The only list found with a stated vetting process, from a security firm. Still an
+      input to review, not a substitute for it.
+
+# Categories the brief asked about where no credible source was found. Recorded as gaps
+# rather than filled with something weak.
+gaps:
+  - category: kubernetes-cloud-operations
+    finding: >
+      No reputable dedicated Kubernetes or cloud-operations skill repository surfaced.
+      The nearest coverage is ci-cd-and-automation in addyosmani-agent-skills.
+    action: Re-survey next quarter; do not adopt a low-signal repository to fill the slot.
+  - category: agent-evaluation-harnesses
+    finding: >
+      No established skill-level evaluation or benchmarking source found. Testing content
+      exists (superpowers TDD, trailofbits mutation and property-based testing) but
+      evaluation of the agent itself is unserved.
+    action: DevForge verification layer covers this need internally for now.
