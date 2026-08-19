@@ -15,7 +15,7 @@ from typing import Annotated
 import typer
 
 from devforge import __version__
-from devforge.cli import render
+from devforge.cli import render, supplychain_commands
 from devforge.core.errors import DevForgeError
 from devforge.core.models import Approval, ApprovalStatus, Task, TaskStatus
 from devforge.core.orchestrator.context import AppContext
@@ -602,6 +602,14 @@ def doctor(
                 render.error(problem)
             raise typer.Exit(code=1)
         render.success("no problems found")
+
+
+# --------------------------------------------------------------- skill supply chain
+#
+# Read-only. See devforge/cli/supplychain_commands.py and
+# docs/security/skill-supply-chain.md.
+app.add_typer(supplychain_commands.registry_app, name="registry")
+app.command("inspect-skill")(supplychain_commands.inspect_skill_command)
 
 
 if __name__ == "__main__":  # pragma: no cover
