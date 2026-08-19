@@ -86,6 +86,10 @@ def test_no_vendor_name_appears_outside_its_adapter() -> None:
         name = relative(path)
         if name in VENDOR_ADAPTERS or name.startswith("supplychain/"):
             continue  # the adapter, and the registry that catalogues third parties
+        if name == "observability/redaction.py":
+            # Names vendors only as credential prefixes to strip (sk-ant-, AKIA...).
+            # That is data about token formats, not a behavioural coupling.
+            continue
         text = path.read_text(encoding="utf-8").lower()
         hits = [token for token in VENDOR_TOKENS if token in text]
         if hits:
