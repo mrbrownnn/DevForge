@@ -38,6 +38,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from devforge.core.errors import NotInitializedError, StateError
 from devforge.core.models import Task, new_id, utcnow
 from devforge.core.workflow.spec import VerifierSpec
+from devforge.observability.redaction import redact_value
 
 DEVFORGE_DIR = ".devforge"
 STATE_VERSION = 1
@@ -224,8 +225,15 @@ class ProjectStore:
         return self.run_dir(task_id) / "task.json"
 
     def save_task(self, task: Task) -> None:
+        """Persist a task, with secret-shaped strings redacted first.
+
+        State outlives the terminal, so an unredacted token in an agent transcript or
+        a verifier output tail is a durable leak (threat T12). Redaction happens here,
+        at the single write boundary.
+        """
         task.touch()
-        _atomic_write(self.task_path(task.task_id), task.model_dump_json(indent=2))
+        payload = redact_value(json.loads(task.model_dump_json()))
+        _atomic_write(self.task_path(task.task_id), json.dumps(payload, indent=2))
         self._index_task(task)
 
     def load_task(self, task_id: str) -> Task:

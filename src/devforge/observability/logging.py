@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from devforge.core.models import utcnow
+from devforge.observability.redaction import redact_value
 
 EventSink = Callable[[dict[str, Any]], None]
 
@@ -80,6 +81,9 @@ class RunLogger:
             **self._defaults,
             **{k: v for k, v in fields.items() if v is not None},
         }
+        # Redact before any sink sees the event (threat T12). One boundary, so a new
+        # sink cannot bypass it.
+        payload = redact_value(payload)
         for sink in self._sinks:
             sink(payload)
         return payload
