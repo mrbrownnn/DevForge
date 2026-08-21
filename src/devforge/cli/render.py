@@ -8,6 +8,7 @@ consumers never have to parse decorated text.
 from __future__ import annotations
 
 import json
+import sys
 from typing import Any
 
 from rich.console import Console
@@ -57,7 +58,15 @@ VERIFICATION_STYLE = {
 
 
 def emit_json(payload: Any) -> None:
-    console.print_json(json.dumps(payload, default=str))
+    """Write machine-readable JSON to stdout, independent of terminal encoding.
+
+    Rich renders through the console's codec, so a single non-ASCII character in a
+    third-party skill (a `!=` written as U+2260, say) raised UnicodeEncodeError on a
+    cp1252 terminal and destroyed the output mid-stream. `--json` is consumed by
+    programs; it escapes to ASCII and bypasses the pretty-printer entirely.
+    """
+    sys.stdout.write(json.dumps(payload, default=str, ensure_ascii=True) + "\n")
+    sys.stdout.flush()
 
 
 def error(message: str) -> None:

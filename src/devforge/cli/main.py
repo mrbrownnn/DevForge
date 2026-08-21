@@ -9,13 +9,15 @@ code 1 rather than a traceback.
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import sys
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
 from devforge import __version__
-from devforge.cli import render, supplychain_commands
+from devforge.cli import render, skill_commands, supplychain_commands
 from devforge.core.errors import DevForgeError
 from devforge.core.models import Approval, ApprovalStatus, Task, TaskStatus
 from devforge.core.orchestrator.context import AppContext
@@ -23,6 +25,23 @@ from devforge.core.state.store import ProjectStore
 from devforge.observability.logging import stream_sink
 from devforge.verification.base import VerificationContext
 from devforge.verification.engine import VerificationEngine
+
+
+def _make_streams_unicode_safe() -> None:
+    """Third-party skill text is not ASCII and consoles are not always UTF-8.
+
+    Without this a single character outside the terminal codec aborts a render
+    part-written. Replacing unencodable characters degrades the display; crashing
+    destroys the output.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            with contextlib.suppress(ValueError, OSError):  # pragma: no cover
+                reconfigure(encoding="utf-8", errors="replace")
+
+
+_make_streams_unicode_safe()
 
 app = typer.Typer(
     name="devforge",
@@ -615,6 +634,8 @@ def doctor(
 # Read-only. See devforge/cli/supplychain_commands.py and
 # docs/security/skill-supply-chain.md.
 app.add_typer(supplychain_commands.registry_app, name="registry")
+# Third-party skill lifecycle: search, inspect, audit, install, update, remove, list.
+app.add_typer(skill_commands.skill_app, name="skill")
 app.command("inspect-skill")(supplychain_commands.inspect_skill_command)
 
 
