@@ -184,4 +184,19 @@ def _check_value(name: str, value: Any, rules: dict[str, Any]) -> list[str]:
             for index, item in enumerate(value):
                 problems.extend(_check_value(f"{name}[{index}]", item, item_rules))
 
+    # A nested object is validated by the same rules as a top-level one. Without
+    # this, a schema that declares a closed vocabulary inside a list (the browser
+    # tool's interaction steps) would accept anything, and the descriptor would be
+    # documenting a constraint it does not enforce.
+    if isinstance(value, dict) and _describes_object(rules):
+        problems.extend(f"{name}.{problem}" for problem in validate_params(rules, value))
+
     return problems
+
+
+def _describes_object(rules: dict[str, Any]) -> bool:
+    return bool(
+        rules.get("properties")
+        or rules.get("required")
+        or rules.get("additionalProperties") is False
+    )
