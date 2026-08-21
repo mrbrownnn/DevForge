@@ -291,3 +291,104 @@ def render_benchmark(report) -> None:
             expand=False,
         )
     )
+
+
+SEVERITY_STYLE = {
+    "critical": "bold red",
+    "high": "red",
+    "medium": "yellow",
+    "low": "cyan",
+    "info": "dim",
+}
+
+CHECK_STYLE = {
+    "pass": "green",
+    "fail": "bold red",
+    "warn": "yellow",
+    "n/a": "dim",
+    "unknown": "magenta",
+}
+
+
+def render_scan(report, *, show_suppressed: bool = False) -> None:
+    if not report.findings:
+        console.print(
+            f"[green]no findings[/green] in {report.files_scanned} file(s) "
+            f"({len(report.suppressed)} accepted by the baseline)"
+        )
+        console.print(
+            "[dim]No pattern in the rule set matched. That is not the same as "
+            "\"this code is safe\".[/dim]"
+        )
+    else:
+        table = Table("severity", "rule", "location", "threat", "finding", box=None)
+        for finding in report.sorted_findings():
+            table.add_row(
+                f"[{SEVERITY_STYLE.get(finding.severity.value, '')}]"
+                f"{finding.severity.value}[/]",
+                finding.id,
+                escape(finding.location),
+                finding.threat or "-",
+                escape(finding.title),
+            )
+        console.print(table)
+        for finding in report.sorted_findings():
+            console.print(f"  [dim]{escape(finding.location)}:[/dim] {escape(finding.evidence)}")
+
+    if show_suppressed and report.suppressed:
+        console.print("\n[dim]accepted by security/baseline.yaml:[/dim]")
+        for finding in report.suppressed:
+            console.print(f"  [dim]{finding.id} {escape(finding.location)}[/dim]")
+
+    if report.unreadable:
+        console.print(f"[yellow]{len(report.unreadable)} path(s) could not be read[/yellow]")
+
+
+def render_audit(report) -> None:
+    from devforge.security.catalog import LAYERS
+
+    names = {layer.number: layer.name for layer in LAYERS}
+    table = Table("layer", "check", "status", "detail", box=None)
+    for number, results in report.by_layer().items():
+        for index, result in enumerate(results):
+            table.add_row(
+                f"{number} {names.get(number, '')}" if index == 0 else "",
+                f"{result.id} {escape(result.title)}",
+                f"[{CHECK_STYLE.get(result.status.value, '')}]{result.status.value}[/]",
+                escape(result.detail[:90]),
+            )
+    console.print(table)
+
+    for result in report.failed + report.warned:
+        if result.remediation:
+            console.print(
+                f"  [yellow]{result.id}[/yellow] {escape(result.remediation)}"
+            )
+    if report.unknown:
+        console.print(
+            f"[magenta]{len(report.unknown)} check(s) could not be evaluated[/magenta] "
+            "[dim]- unknown is never counted as passing[/dim]"
+        )
+
+
+def render_threats(layers, threats) -> None:
+    table = Table("#", "layer", "status", "limits", box=None)
+    for layer in layers:
+        table.add_row(
+            str(layer.number),
+            escape(layer.name),
+            layer.status.value,
+            escape(layer.limits[:80] + ("..." if len(layer.limits) > 80 else "")),
+        )
+    console.print(table)
+
+    threat_table = Table("id", "threat", "severity", "layers", "residual risk", box=None)
+    for threat in threats:
+        threat_table.add_row(
+            threat.id,
+            escape(threat.name),
+            f"[{SEVERITY_STYLE.get(threat.severity.value, '')}]{threat.severity.value}[/]",
+            ",".join(str(n) for n in threat.layers),
+            escape(threat.residual[:70] + ("..." if len(threat.residual) > 70 else "")),
+        )
+    console.print(threat_table)
