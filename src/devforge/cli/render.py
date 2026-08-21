@@ -242,3 +242,52 @@ def render_verification(results: list[VerificationResult], *, show_output: bool 
                     style="red",
                 )
             )
+
+
+BENCHMARK_STYLE = {
+    "repaired": "green",
+    "not_repaired": "red",
+    "rejected_suspicious": "red",
+    "not_reproduced": "yellow",
+    "unavailable": "yellow",
+}
+
+
+def render_benchmark(report) -> None:
+    """Show the per-case grid, then the rate, then what the rate is not.
+
+    The caveat is printed every time rather than kept in the docs: a success rate
+    is the single most quotable number this harness produces, and it travels
+    without its context unless the context travels with it.
+    """
+    table = Table("case", "outcome", "reproduced", "patch", "suite after", "ms", box=None)
+    for result in report.results:
+        style = BENCHMARK_STYLE.get(result.outcome.value, "")
+        table.add_row(
+            escape(result.case_id),
+            f"[{style}]{result.outcome.value}[/]",
+            result.reproduced,
+            result.patch_verdict,
+            "[green]pass[/green]" if result.tests_pass_after else "[red]fail[/red]",
+            str(result.duration_ms),
+        )
+    console.print(table)
+
+    for result in report.results:
+        for finding in result.findings:
+            console.print(f"  [red]{escape(result.case_id)}[/red] {escape(finding)}")
+
+    rate = f"{report.repaired}/{report.total} ({report.success_rate:.0%})"
+    console.print(
+        Panel(
+            f"solver [bold]{escape(report.solver)}[/bold]\n"
+            f"repair success rate [bold]{rate}[/bold]\n"
+            f"{escape(str(report.by_outcome()))}\n\n"
+            "A case counts as repaired only when the defect reproduced "
+            "deterministically,\nthe patch is non-empty and clean, and the whole "
+            "suite passes afterwards.\nThis score covers seeded defects in small "
+            "projects; it does not predict\nbehaviour on real bugs in real codebases.",
+            title="benchmark",
+            expand=False,
+        )
+    )

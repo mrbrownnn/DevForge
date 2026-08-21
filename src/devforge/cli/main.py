@@ -22,6 +22,7 @@ from devforge.core.errors import DevForgeError
 from devforge.core.models import Approval, ApprovalStatus, Task, TaskStatus
 from devforge.core.orchestrator.context import AppContext
 from devforge.core.state.store import ProjectStore
+from devforge.debug.benchmark import run_builtin_benchmark
 from devforge.observability.logging import stream_sink
 from devforge.verification.base import VerificationContext
 from devforge.verification.engine import VerificationEngine
@@ -515,6 +516,68 @@ def runtimes(
     for name, (ok, detail) in report.items():
         table.add_row(name, "[green]yes[/green]" if ok else "[red]no[/red]", detail)
     render.console.print(table)
+
+
+# -------------------------------------------------------------------------- bench
+
+
+@app.command()
+def bench(
+    solver: Annotated[
+        str,
+        typer.Option(
+            "--solver",
+            help="reference (known-good fix), cheat (weakens tests), none (no change).",
+        ),
+    ] = "reference",
+    case: Annotated[
+        list[str] | None, typer.Option("--case", help="Run only these case ids.")
+    ] = None,
+    report_path: Annotated[
+        Path | None, typer.Option("--report", help="Write the Markdown report here.")
+    ] = None,
+    as_json: Annotated[bool, typer.Option("--json", help="Emit JSON.")] = False,
+) -> None:
+    """Measure repair success rate against the seeded-defect benchmark.
+
+    The two built-in solvers are controls, not agents. `reference` applies the known
+    fix and must score 100%; `cheat` deletes assertions until the suite is green and
+    must score 0%. A run where those two anchors move is a broken grader, and any
+    repair rate measured with it is meaningless.
+    """
+    ctx = _context()
+    try:
+        report = asyncio.run(
+            run_builtin_benchmark(
+                policy=ctx.policy,
+                solver_name=solver,
+                case_ids=list(case) if case else None,
+                logger=ctx.logger,
+            )
+        )
+    except DevForgeError as exc:
+        _fail(str(exc))
+        return
+
+    if report_path is not None:
+        report_path.write_text(report.render(), encoding="utf-8")
+
+    if as_json:
+        render.emit_json(
+            {
+                "solver": report.solver,
+                "total": report.total,
+                "repaired": report.repaired,
+                "success_rate": report.success_rate,
+                "by_outcome": report.by_outcome(),
+                "results": [result.model_dump(mode="json") for result in report.results],
+            }
+        )
+        return
+
+    render.render_benchmark(report)
+    if report_path is not None:
+        render.info(f"report written to {report_path}")
 
 
 # ------------------------------------------------------------------------- doctor
