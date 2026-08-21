@@ -25,6 +25,7 @@ EXPECTED_DOCS = (
     "tools.md",
     "runtimes.md",
     "security.md",
+    "browser.md",
     "contributing.md",
 )
 
@@ -100,13 +101,24 @@ def test_every_tool_is_documented() -> None:
 
 
 def test_capabilities_that_do_not_exist_are_still_declared_missing() -> None:
-    """Browser and MCP became real in Phase 2; visual verification did not. The claim
-    that nothing pretends to work has to keep being true as things get implemented."""
+    """Browser and visual verification became real in Phase 2 and Phase 6. The claim
+    that nothing pretends to work has to keep being true as things get implemented -
+    so what is checked here is that the honesty rules survived the implementation."""
     tools = (DOCS / "tools.md").read_text(encoding="utf-8")
     from devforge.verification.base import VerifierRegistry
 
     assert "unavailable" in tools and "never `passed`" in tools
     assert VerifierRegistry.default().get("visual").kind == "visual"
+
+
+def test_visual_verification_docs_refuse_to_promise_perfection() -> None:
+    browser = (DOCS / "browser.md").read_text(encoding="utf-8")
+
+    assert "not a sandbox" in browser.lower()
+    assert "pixel perfect" in browser, "the page must state what a pass does not prove"
+    assert "UNVERIFIED" in browser
+    for threat in ("SSRF", "file://", "Downloads", "injection"):
+        assert threat in browser, f"the browser threat table omits {threat}"
 
 
 def test_mcp_security_model_is_documented() -> None:

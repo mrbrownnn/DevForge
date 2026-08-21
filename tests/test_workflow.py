@@ -47,13 +47,16 @@ def test_feature_workflow_shape() -> None:
     assert implementation.repairable
 
 
-def test_clone_workflow_is_declared_incomplete() -> None:
+def test_clone_workflow_verifies_its_own_output() -> None:
+    """Phase 6 made this real; what stays fixed is that it cannot pass unverified."""
     spec = WorkflowLoader.for_project(None).load("clone")
 
-    assert "experimental" in spec.tags and "incomplete" in spec.tags
     assert spec.step("recon").tools == ["browser"]
     visual = next(v for v in spec.verifiers if v.id == "visual")
     assert visual.kind == "visual" and visual.required
+    assert visual.params.get("reference") is None, (
+        "the reference URL is task-specific; shipping one would compare against a guess"
+    )
 
 
 def test_agent_step_requires_agent() -> None:
