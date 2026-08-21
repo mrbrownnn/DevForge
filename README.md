@@ -33,10 +33,11 @@ DevForge is built on three commitments:
    bounded by `max_attempts`, then stops loudly.
 2. **Humans hold the dangerous decisions.** Architecture, destructive commands and
    final sign-off are approval gates that persist across processes.
-3. **Nothing pretends to work.** Capabilities DevForge does not have (browser
-   automation, MCP, visual diffing) are declared adapters that report `unavailable`
-   at runtime. They never return fabricated data, and a workflow that needs them
-   halts with an explicit reason.
+3. **Nothing pretends to work.** Capabilities that depend on something absent - a
+   browser driver, an image decoder, an MCP server - report `unavailable` at runtime
+   rather than returning fabricated data, and a workflow that needs them halts with an
+   explicit reason. Visual verification reports `UNVERIFIED` as a real verdict and
+   never claims pixel-perfect reproduction.
 
 ---
 
@@ -101,7 +102,9 @@ src/devforge/
 ├── agents/                AgentSpec model + prompt composition
 ├── tools/                 Tool interface + executor: filesystem, shell, git, browser
 ├── mcp/                   MCP client, server registry and tool bridge (stdio)
-├── verification/          Verifier interface, command verifier, visual (declared)
+├── browser/               isolated Playwright session + page capture
+├── visual/                structural diff, pixel corroboration, loopback static server
+├── verification/          Verifier interface, command verifier, visual verifier
 ├── policy/                permission + approval policy engine
 ├── approval/              persistent human gates
 ├── observability/         structured JSON event logging
@@ -345,10 +348,15 @@ Stated plainly, because a harness that hides its gaps is worse than useless:
   (`pip install "devforge[browser]"`). Without the driver the tool reports `unavailable`
   rather than fabricating page content.
 - **MCP** works over stdio only. HTTP/SSE transports are refused rather than downgraded,
-  and sampling is deliberately unimplemented - it would let a server drive the model.
+  and sampling is deliberately not implemented - it would let a server drive the model.
   See [docs/security/mcp.md](docs/security/mcp.md).
-- **Visual verification is not implemented.** `verification/visual.py` reports
-  `unavailable` and never `passed`.
+- **Visual verification compares structure, not pixels.** The verdict comes from
+  matched elements and their computed styles; the pixel ratio is corroboration and
+  needs the `visual` extra (Pillow + numpy) to be computed at all. A passing report
+  never claims pixel-perfect reproduction, and states what it could not check. See
+  [docs/browser.md](docs/browser.md).
+- **The clone workflow needs configuring.** The built-in ships without a reference URL,
+  because the target is task-specific; copy it to `workflows/clone.yaml` and set one.
 - **One real runtime adapter.** Claude Code. Codex/OpenCode adapters are interface
   work, not present.
 - **Agent tool calls are proxied only for runtimes that delegate.** A runtime given a
@@ -363,11 +371,11 @@ Stated plainly, because a harness that hides its gaps is worse than useless:
 ## Roadmap
 
 1. Proxy agent tool calls through the DevForge tool layer, so every call is policy-checked.
-2. Playwright-backed browser tool + perceptual visual verifier → makes `clone` real.
-3. MCP client with per-server policy.
-4. Second runtime adapter, to prove the abstraction under load.
-5. Parallel/DAG steps instead of a strict sequence.
-6. Optional OS-level sandboxing for shell and verifier execution.
+2. Perceptual (not just per-pixel) image comparison, so a shifted-but-correct layout
+   stops registering as a difference.
+3. Second runtime adapter, to prove the abstraction under load.
+4. Optional OS-level sandboxing for shell and verifier execution.
+5. Authenticated browser sessions, under an explicit credential policy.
 
 ## Development
 

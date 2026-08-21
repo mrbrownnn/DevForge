@@ -56,19 +56,26 @@ missing, and never fabricates page content.
 
 ### browser
 
-Actions: `fetch`, `text`, `html`, `title`, `screenshot`. Backed by Playwright, which is
-an **optional** dependency:
+Actions: `fetch`, `text`, `html`, `title`, `screenshot`, `snapshot`, `inspect`,
+`styles`, `assets`, `network`. Backed by Playwright, which is an **optional**
+dependency:
 
 ```bash
 pip install "devforge[browser]" && playwright install chromium
 ```
 
 Every URL clears the network policy first (scheme, resolved address, host allowlist),
-and network access is off by default. Page content returns fenced and scanned as
-untrusted input. Screenshots are a filesystem write and are checked as one.
+and network access is off by default. So does every request the *page* then makes, so
+a public page cannot fetch cloud metadata on our behalf. Each call gets a fresh
+isolated context: no profile, no cookies in or out, no downloads. Page content returns
+fenced and scanned as untrusted input. Screenshots are a filesystem write and are
+checked as one.
 
-Not implemented: authenticated sessions, cookie persistence, downloads, and visual
-diffing — so the `clone` workflow still cannot complete, it just gets further.
+Interactions are a closed vocabulary (`click`, `type`, `scroll`, `wait`); there is no
+`evaluate`, because a JavaScript string from a caller is arbitrary execution.
+
+Not implemented: authenticated sessions and cookie persistence — both deliberate, see
+[browser.md](browser.md).
 
 ### mcp
 
@@ -82,10 +89,20 @@ passes the shell allowlist, and responses are treated as untrusted content. Full
 
 ## Visual verification
 
-`verification/visual.py` is the same kind of declared adapter on the verifier side. It
-reports `unavailable` and never `passed`. Because a required verifier that is
-unavailable counts as a blocking failure, a workflow depending on it stops with an
-explicit reason instead of completing on an unchecked assumption.
+`verification/visual.py` renders the reference and the candidate at several viewports
+and diffs their layout, dimensions, typography, spacing, colours and images. The
+verdict comes from that structural comparison; a pixel diff is recorded as
+corroboration, never as the verdict.
+
+It keeps the honesty rule it started with: without the driver, without a reference,
+without a candidate, or when a capture fails, it reports `unavailable` and never `passed`.
+Because a required verifier that is unavailable counts as a blocking failure, a workflow
+depending on it stops with an explicit reason instead of completing on an unchecked
+assumption. `UNVERIFIED` is a real verdict, and no report claims pixel-perfect
+reproduction.
+
+Full detail, including the threat table and the clone loop:
+[browser.md](browser.md).
 
 ## Adding a tool
 
