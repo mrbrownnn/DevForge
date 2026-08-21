@@ -151,12 +151,20 @@ class ToolRegistry(Registry[Tool]):
     def default(cls) -> ToolRegistry:
         from devforge.mcp.tool import McpTool
         from devforge.tools.browser import BrowserTool
+        from devforge.tools.debug import DebugTool
         from devforge.tools.filesystem import FilesystemTool
         from devforge.tools.git import GitTool
         from devforge.tools.shell import ShellTool
 
         registry = cls()
-        for tool in (FilesystemTool(), ShellTool(), GitTool(), BrowserTool(), McpTool()):
+        for tool in (
+            FilesystemTool(),
+            ShellTool(),
+            GitTool(),
+            BrowserTool(),
+            DebugTool(),
+            McpTool(),
+        ):
             registry.register(tool.name, tool)
         return registry
 
