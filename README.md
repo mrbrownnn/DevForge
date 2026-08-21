@@ -135,6 +135,7 @@ Full details: [docs/architecture.md](docs/architecture.md).
 | **Verifier** | The only authority on whether work is correct. | [docs/workflows.md](docs/workflows.md) |
 | **Policy** | Permission allowlists and approval gates. | [docs/security.md](docs/security.md) |
 | **Patch guard** | Reads a repair's diff for the ways it can cheat. | [docs/debugging.md](docs/debugging.md) |
+| **Security Center** | Threat model, posture audit, workspace scan, SBOM. | [docs/security/security-center.md](docs/security/security-center.md) |
 
 ---
 
@@ -167,6 +168,11 @@ Full details: [docs/architecture.md](docs/architecture.md).
 | `devforge skill update <name>` | Move a pin deliberately and re-audit |
 | `devforge skill remove <name>` | Remove an installed skill and its lock entry |
 | `devforge skill list` | List installed skills (`--verify` re-hashes them) |
+| `devforge security scan` | Scan a workspace for secrets, injection-shaped text and dangerous code |
+| `devforge security audit` | Check whether the declared security controls are actually in place |
+| `devforge security sbom` | CycloneDX inventory: packages, skills, MCP servers, runtime binaries |
+| `devforge security threats` | The threat model and the defence-in-depth layers |
+| `devforge security report` | Full report: audit, scan, inventory and residual risk |
 
 Exit codes: `0` success, `1` failure, `2` paused awaiting approval.
 
@@ -364,6 +370,12 @@ Stated plainly, because a harness that hides its gaps is worse than useless:
   swallowed exceptions and security settings turned off. An agent can still weaken a
   check in a way no pattern anticipates - by rewriting a helper an assertion calls, say.
   It raises the cost of the obvious cheats and claims nothing more.
+- **The security scanner is pattern matching.** `devforge security scan` finds
+  known-dangerous constructs. It has no taint analysis and no vulnerability
+  database, and a clean scan means no pattern matched - not that the code is safe.
+  The configuration audit is stronger, because it checks facts rather than
+  heuristics, but it only checks the controls someone wrote a check for. See
+  [docs/security/security-center.md](docs/security/security-center.md).
 - **The repair benchmark scores one solver on eight seeded defects.** `devforge bench`
   measures a repair success rate against small, self-contained Python bugs with known
   fixes. It is not a prediction about real defects in real codebases. See

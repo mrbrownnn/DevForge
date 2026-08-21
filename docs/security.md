@@ -188,3 +188,18 @@ constrain inline code, so a human decides.
 
 Open an issue describing the behaviour and the policy configuration that produced it. If
 it is a real bypass of a documented guarantee, say so explicitly in the title.
+
+
+## The Security Center
+
+`devforge security scan | audit | sbom | threats | report` is the operational side
+of this page: the twelve threats and eight layers as data the CLI prints and the
+test suite checks, a workspace scanner, a configuration audit, and a CycloneDX
+inventory.
+
+It computes no score and never prints the word "secure" as a verdict, for the
+reason this page has repeated throughout: DevForge makes a specific set of mistakes
+harder and a specific set of actions visible, and claiming more than that would
+undo the value of stating it honestly.
+
+See [security/security-center.md](security/security-center.md).
