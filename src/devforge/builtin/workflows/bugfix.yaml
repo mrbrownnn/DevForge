@@ -1,69 +1,130 @@
+# The autonomous debugging loop:
+#
+#   bug -> reproduce -> evidence -> analyse -> hypothesis -> approval
+#       -> patch -> regression test -> verify -> repeat if necessary
+#
+# "Repeat if necessary" is the `repair` step's max_attempts. When a verifier fails,
+# its output becomes the next attempt's repair briefing, so the loop is driven by
+# evidence rather than by the agent deciding it is finished.
+#
+# Two verifiers exist specifically to stop the loop from cheating its way out:
+# `patch-guard` fails a patch that removes assertions, disables tests or turns off a
+# security control, and `repair-report` fails a repair that did not write down what it
+# did. Both are required, so neither can be skipped by a step that "passed".
 name: bugfix
-version: 1.0.0
-description: Reproduce, diagnose and fix a defect, proven by a regression test.
+version: 2.0.0
+description: Reproduce, diagnose, repair and verify a defect, with the patch itself reviewed.
+tags: [debugging, repair]
 
 verifiers:
-  - id: reproduction
-    kind: tests
-    description: The regression test - expected to FAIL before the fix exists
-    argv: [python, -m, pytest, -q, --last-failed]
-    timeout_s: 600
-    required: false
   - id: tests
     kind: tests
-    description: Project unit test suite
+    description: The project suite - must be green, including the tests that already passed
     argv: [python, -m, pytest, -q]
     timeout_s: 900
     required: true
+
   - id: lint
     kind: lint
     argv: [ruff, check, .]
     timeout_s: 300
     required: false
 
+  - id: patch-guard
+    kind: patch-guard
+    description: Refuse a patch that weakens checks instead of fixing the defect
+    required: true
+    timeout_s: 300
+    params:
+      report: REPAIR-REVIEW.md
+
+  - id: repair-report
+    kind: repair-report
+    description: No silent modifications - diagnosis, changed files, tests, verification
+    required: true
+    timeout_s: 120
+    params:
+      path: REPAIR-REPORT.md
+
+  - id: diagnosis-written
+    kind: artifacts
+    expect: [DIAGNOSIS.md]
+    required: true
+
 steps:
   - id: reproduce
     name: Reproduce
-    agent: tester
+    agent: debugger
     skills: [debugging, testing]
-    tools: [filesystem, shell]
-    description: Reproduce the defect deterministically and capture the exact failure.
-    outputs: [reproduction.md]
+    tools: [debug, filesystem]
+    description: >
+      Make the defect happen on demand and confirm it happens every time. A flaky
+      reproduction is reported as flaky and stops here: a later green run would not
+      prove anything was repaired.
+    outputs: [REPRODUCTION.md]
+
+  - id: evidence
+    name: Collect evidence
+    agent: debugger
+    skills: [debugging]
+    tools: [debug, filesystem, git]
+    description: >
+      Collect stack traces, failing tests, logs, the working diff, the source around
+      each failing frame and runtime state. Secrets are redacted and refused paths are
+      listed rather than silently omitted.
+    outputs: [EVIDENCE.md]
 
   - id: diagnose
-    name: Diagnose
-    agent: reviewer
+    name: Analyse and hypothesise
+    agent: debugger
     skills: [debugging]
-    tools: [filesystem, git]
-    description: Identify the root cause from the reproduction evidence.
-    outputs: [diagnosis.md]
+    tools: [debug, filesystem, git]
+    verify: [diagnosis-written]
+    max_attempts: 2
+    description: >
+      State one root cause and one hypothesis, separating what was observed from what
+      is inferred, and name the implicated files. "Undetermined" is a valid answer.
+    outputs: [DIAGNOSIS.md]
 
   - id: approve-diagnosis
     name: Diagnosis approval
     kind: approval
     gate: diagnosis
-    description: A human confirms the root cause before code changes.
+    description: A human confirms the root cause before any code changes.
 
-  - id: fix
-    name: Fix
+  - id: repair
+    name: Patch and regression test
     agent: coder
-    skills: [debugging, backend]
-    tools: [filesystem, shell, git]
-    verify: [lint]
+    skills: [debugging, backend, testing]
+    tools: [debug, filesystem, shell, git]
+    verify: [tests, patch-guard, lint]
     max_attempts: 3
-    description: Fix the root cause, not the symptom.
+    description: >
+      Fix the root cause and add a regression test that fails without the fix. This is
+      the repeat step: a failing verifier becomes the next attempt's briefing.
 
-  - id: regression-test
-    name: Regression test
-    agent: tester
-    skills: [testing]
-    tools: [filesystem, shell]
-    verify: [tests]
-    max_attempts: 3
-    description: Add a test that fails without the fix.
+  - id: report
+    name: Repair report
+    agent: debugger
+    skills: [debugging]
+    tools: [debug, filesystem, git]
+    verify: [repair-report]
+    max_attempts: 2
+    description: >
+      Write the repair report. The changed-files section is read from git, not from
+      what the patch claims to have touched.
+    outputs: [REPAIR-REPORT.md]
 
   - id: verification
-    name: Verification
+    name: Independent verification
     kind: verify
-    verify: [tests, lint]
-    description: Confirm the suite is green and nothing else regressed.
+    verify: [tests, patch-guard, repair-report, lint]
+    description: >
+      One more pass with no agent in the loop. The step that made the change is not the
+      step that certifies it.
+
+  - id: approve-fix
+    name: Fix approval
+    kind: approval
+    gate: final_review
+    description: A human reviews the diagnosis, the patch and the review before this lands.
