@@ -43,7 +43,13 @@ from devforge.observability.redaction import redact_value
 DEVFORGE_DIR = ".devforge"
 STATE_VERSION = 1
 
-MEMORY_FILES = ("context.md", "architecture.md", "decisions.md", "conventions.md")
+MEMORY_FILES = (
+    "context.md",
+    "architecture.md",
+    "decisions.md",
+    "conventions.md",
+    "known-issues.md",
+)
 
 
 class ProjectConfig(BaseModel):

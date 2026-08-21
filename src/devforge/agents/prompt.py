@@ -100,6 +100,7 @@ def build_invocation(
     skills: list[Skill],
     memory: dict[str, str],
     tools: list[str],
+    context_pack: str = "",
     attempt: int = 1,
     previous_attempt: StepAttempt | None = None,
     workspace: str = ".",
@@ -119,7 +120,9 @@ def build_invocation(
         "role": agent.role,
         "attempt": attempt,
         "skills": format_skills(skills),
-        "memory": format_memory(memory),
+        # A retrieved pack replaces the whole-memory dump when one is available:
+        # same slot in the template, a fraction of the tokens, and scoped to the task.
+        "memory": context_pack.strip() or format_memory(memory),
         "diagnostics": diagnostics,
         "outputs": ", ".join(step.outputs) or "(none declared)",
         "tools": ", ".join(tools) or "(none)",

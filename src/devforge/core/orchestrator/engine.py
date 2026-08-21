@@ -24,6 +24,7 @@ from pathlib import Path
 from devforge.agents.prompt import build_invocation
 from devforge.agents.spec import AgentRegistry
 from devforge.approval.gate import ApprovalGate
+from devforge.core.errors import DevForgeError
 from devforge.core.execution import ExecutionContext
 from devforge.core.models import (
     ApprovalStatus,
@@ -327,6 +328,7 @@ class Orchestrator:
             agent=spec,
             skills=skills,
             memory=self.store.read_memory(),
+            context_pack=self._context_pack(task, step, logger),
             tools=tools,
             attempt=attempt_number,
             previous_attempt=previous if previous and previous.failed_verifiers else None,
@@ -353,6 +355,33 @@ class Orchestrator:
             summary=result.summary,
         )
         return result
+
+    def _context_pack(self, task: Task, step: WorkflowStep, logger: RunLogger) -> str:
+        """Retrieved context for this step, or nothing if the project has no index.
+
+        A missing index is not an error: the agent falls back to the full project
+        memory, exactly as before Phase 4. An index that exists but fails to load is
+        reported, because silently degrading to a worse prompt is how a regression
+        hides.
+        """
+        from devforge.context.pack import build_pack
+
+        query = f"{task.description} {step.description or step.name}".strip()
+        try:
+            pack = build_pack(query, store=self.store, max_files=10, count_tokens=False)
+        except DevForgeError as exc:
+            logger.info("context.unavailable", reason=str(exc))
+            return ""
+
+        rendered = pack.render()
+        logger.info(
+            "context.pack",
+            files=len(pack.relevant_files),
+            symbols=len(pack.relevant_symbols),
+            characters=len(rendered),
+            confident=not pack.retrieval_note,
+        )
+        return rendered
 
     async def _verify(
         self, step: WorkflowStep, specs: dict, execution: ExecutionContext

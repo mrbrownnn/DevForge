@@ -149,6 +149,9 @@ Full details: [docs/architecture.md](docs/architecture.md).
 | `devforge workflows` | List available workflows |
 | `devforge runtimes` | List agent runtimes and their availability |
 | `devforge doctor` | Environment check: what works, what is unavailable |
+| `devforge index` | Build the codebase index (structure only, no file contents) |
+| `devforge context "task"` | Show the context pack an agent would receive (`--compare` measures it) |
+| `devforge context-doctor` | Report whether the index still matches the working tree |
 | `devforge registry list` | Third-party skill sources, pins and dispositions |
 | `devforge registry show <id>` | Recorded evidence and decision for one source |
 | `devforge registry verify` | Validate the registry: pins, licenses, trust decisions |
@@ -192,6 +195,28 @@ Shipped workflows: `demo`, `feature`, `bugfix`, `refactor`, `clone`
 (`clone` is an executable extension point — see Limitations).
 
 ---
+
+## Context engineering
+
+Agents get a **retrieved context pack**, not the repository. `devforge index` builds a
+structural map - files, symbols, imports, roles - storing no file contents, only where
+to look. Retrieval is lexical and structural: no vector database, no embedding model,
+and every result carries the reason it was chosen.
+
+```bash
+devforge index
+devforge context "Change JWT authentication" --compare
+```
+
+Measured on a 64-file fixture with real `tiktoken` counts: **4,369 tokens of
+full-repository context versus 515 for the pack - an 88% reduction at precision 1.00,
+recall 0.75.** When nothing matches well the pack says so rather than listing the
+least-irrelevant files, because an agent treats anything listed as relevant.
+
+Secrets are never indexed: `.env`, key material and `**/secrets/**` are refused by
+path, and files that *are* credential material are refused by content. Files that
+merely discuss credentials are indexed - the distinction matters, and getting it wrong
+once hid this project's own redaction code from retrieval.
 
 ## Verification loop
 
