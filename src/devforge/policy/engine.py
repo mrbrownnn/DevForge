@@ -137,6 +137,16 @@ class PolicyEngine:
         approvals = ApprovalPolicy.load(resolve_policy_file("approvals.yaml", project_root))
         return cls(permissions, approvals, workspace=workspace or project_root or Path.cwd())
 
+    def for_workspace(self, workspace: Path) -> PolicyEngine:
+        """The same rules applied to a different root.
+
+        The benchmark runs each case in its own temporary directory, and every
+        path rule is relative to the workspace. Rebuilding the engine per case
+        would re-read the policy files each time and let the rules drift between
+        cases in one run; rebinding the root keeps one policy across all of them.
+        """
+        return PolicyEngine(self.permissions, self.approvals, workspace=workspace)
+
     # -- shell ------------------------------------------------------------------
 
     def check_command(self, argv: list[str]) -> PolicyDecision:
