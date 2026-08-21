@@ -152,7 +152,13 @@ Full details: [docs/architecture.md](docs/architecture.md).
 | `devforge registry list` | Third-party skill sources, pins and dispositions |
 | `devforge registry show <id>` | Recorded evidence and decision for one source |
 | `devforge registry verify` | Validate the registry: pins, licenses, trust decisions |
-| `devforge inspect-skill <dir>` | Statically inspect an untrusted skill; nothing is executed |
+| `devforge inspect-skill <dir>` | Statically inspect a local skill directory; nothing is executed |
+| `devforge skill search <query>` | Search the catalogue of third-party skills (offline) |
+| `devforge skill audit <name>` | Fetch at the pin and inspect; installs nothing |
+| `devforge skill install <name>` | Fetch, verify, gate, install, lock |
+| `devforge skill update <name>` | Move a pin deliberately and re-audit |
+| `devforge skill remove <name>` | Remove an installed skill and its lock entry |
+| `devforge skill list` | List installed skills (`--verify` re-hashes them) |
 
 Exit codes: `0` success, `1` failure, `2` paused awaiting approval.
 
@@ -250,14 +256,32 @@ six well-known sources found 70 Python scripts, 41 shell scripts, 155 `.mjs` fil
 auto-executing session hooks and six opaque `.zip` archives — plus an instruction telling
 the agent to run a script before reading it.
 
-**There is no installer.** No code path fetches or runs a skill; that is the strongest
-available control and it costs nothing. What exists instead:
+**There is an installer, and it never executes what it installs.** A skill is
+instructions; DevForge has no code path that runs a file a skill shipped. Executable
+content is quarantined for review, listed in the report and recorded in the lockfile.
+That is what lets you install a skill without handing it the machine.
+
+```bash
+devforge skill search testing
+devforge skill audit test-driven-development     # fetch at the pin, inspect, install nothing
+devforge skill install test-driven-development   # only after you have read the report
+```
+
+The pipeline: refuse if unpinned → clone at the exact commit → verify HEAD matches the
+pin → hash the tree → inspect → classify risk → refuse CRITICAL, gate anything above
+the ceiling → install with executables quarantined → write the report → write
+`skills.lock`. Pins never move on their own: `update` needs an explicit target and
+re-runs every check.
+
+Supporting machinery:
 
 - `registry/skills.yaml` — sources pinned by canonical URL **plus commit SHA** (names are
   not identity: one skill name resolves to four repositories in the wild)
 - trust tiers, `untrusted` by default; a pin change revokes trust
 - a static inspector that flags pipe-to-shell, credential access, install commands,
   archives, hooks and execute-before-read instructions
+- a quality score over nine dimensions, none of them popularity
+- `skills.lock`, `THIRD_PARTY_NOTICES.md` and per-skill reports in `security-reports/`
 
 ```bash
 devforge registry list
@@ -265,6 +289,7 @@ devforge inspect-skill ./some-untrusted-skill
 ```
 
 Research: [docs/skill-ecosystem.md](docs/skill-ecosystem.md) ·
+Installing: [docs/security/skills.md](docs/security/skills.md) ·
 Design: [docs/security/skill-supply-chain.md](docs/security/skill-supply-chain.md) ·
 Threats: [docs/security/threat-model.md](docs/security/threat-model.md)
 
@@ -304,7 +329,7 @@ Stated plainly, because a harness that hides its gaps is worse than useless:
 ## Development
 
 ```bash
-python -m pytest -q      # 366 tests, no network, no paid API calls
+python -m pytest -q      # 406 tests, no network, no paid API calls
 ruff check . && ruff format --check .
 ```
 
