@@ -34,7 +34,11 @@ ANY_RUNTIME = "*"
 
 
 class Skill(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    # Third-party frontmatter carries keys DevForge does not model - `license`,
+    # `allowed-tools`, vendor-specific hints. Rejecting them would make the harness
+    # unable to read real skills; they are captured in `metadata` and never
+    # interpreted, so tolerating them costs nothing.
+    model_config = ConfigDict(extra="allow")
 
     name: str
     version: str = "1.0.0"
@@ -44,6 +48,12 @@ class Skill(BaseModel):
     compatible_runtimes: list[str] = Field(default_factory=lambda: [ANY_RUNTIME])
     instructions: str = ""
     source_path: str | None = None
+
+    @property
+    def extra_metadata(self) -> dict:
+        """Frontmatter keys DevForge does not model, kept for review not for use."""
+        known = set(type(self).model_fields)
+        return {k: v for k, v in self.__dict__.items() if k not in known}
 
     def supports_runtime(self, runtime: str) -> bool:
         return ANY_RUNTIME in self.compatible_runtimes or runtime in self.compatible_runtimes
@@ -84,10 +94,15 @@ def builtin_skill_dir() -> Path:
 
 
 def skill_search_paths(project_root: Path | None) -> list[Path]:
+    """Resolution order. Earlier wins, so a project can always override a skill it
+    installed from a third party rather than being stuck with it."""
     paths: list[Path] = []
     if project_root is not None:
         paths.append(project_root / ".devforge" / "skills")
         paths.append(project_root / "skills")
+        # Installed third-party skills rank last: installation is a decision to keep
+        # a skill available, not a promotion above the project's own content.
+        paths.append(project_root / ".devforge" / "installed-skills")
     paths.append(builtin_skill_dir())
     return paths
 

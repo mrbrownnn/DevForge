@@ -44,6 +44,13 @@ shell:
 
   # Destructive but sometimes legitimate: a human must approve each one.
   require_approval:
+    # Skill installation fetches source with git. It reaches the network and brings
+    # back code, so it is a decision, not a default. DevForge never executes what it
+    # fetches - see docs/security/skills.md.
+    - "git clone*"
+    - "git ls-remote*"
+    - "git -C * checkout*"
+    - "git -C * rev-parse*"
     - "git push*"
     - "git reset --hard*"
     - "git clean*"
