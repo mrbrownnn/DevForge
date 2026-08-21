@@ -19,6 +19,7 @@ requires touching Python.
 from __future__ import annotations
 
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -56,6 +57,11 @@ class VerifierSpec(BaseModel):
     expect: list[str] = Field(default_factory=list)
     timeout_s: int = 600
     required: bool = True
+    #: Kind-specific configuration. Deliberately opaque to the orchestrator: a
+    #: verifier kind that needs settings (the visual verifier needs a reference URL
+    #: and a candidate URL) reads them here, and the core keeps knowing nothing about
+    #: any particular kind.
+    params: dict[str, Any] = Field(default_factory=dict)
     # Exit codes other than 0 that still count as success (e.g. "no tests collected").
     success_exit_codes: list[int] = Field(default_factory=lambda: [0])
 
