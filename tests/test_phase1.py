@@ -118,7 +118,7 @@ def test_project_skill_with_a_critical_finding_is_refused(project: ProjectStore)
     assessment = assess(skill, project_root=project.root)
 
     assert not assessment.allowed
-    assert "credential-path" in assessment.reason
+    assert "credential-access" in assessment.reason
     assert assessment.tier is TrustTier.UNTRUSTED
 
 

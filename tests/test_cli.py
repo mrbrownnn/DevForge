@@ -297,7 +297,7 @@ def test_inspect_skill_reports_findings_and_blocks(
     assert payload["blocked"] is True
     assert payload["counts"]["critical"] >= 1
     assert payload["content_hash"].startswith("sha256:")
-    assert {"pipe-to-shell", "credential-path"} <= {f["rule"] for f in payload["findings"]}
+    assert {"pipe-to-shell", "credential-access"} <= {f["rule"] for f in payload["findings"]}
 
 
 def test_inspect_skill_passes_a_clean_skill(

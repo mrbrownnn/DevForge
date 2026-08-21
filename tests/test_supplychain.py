@@ -310,7 +310,7 @@ def test_credential_access_is_critical(tmp_path: Path) -> None:
 
     report = inspect_skill(directory)
 
-    assert "credential-path" in rules(report.findings)
+    assert "credential-access" in rules(report.findings)
     assert report.blocked
 
 
