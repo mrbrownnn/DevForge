@@ -1,0 +1,180 @@
+# Accepted security findings for the DevForge repository itself.
+#
+# Every entry names one rule at one location, says why it is acceptable, and
+# expires. See security/README.md.
+version: 1
+description: >
+  DevForge's own tree contains the patterns its scanner looks for, because the
+  scanner's rules, its tests and its documentation all have to name them. These
+  are the places where that is true and expected.
+
+suppressions:
+  # --- test fixtures that must contain the dangerous construct to test it -----
+  - id: SEC-CODE-002
+    location: tests/test_security_phase2.py:51
+    reason: >
+      An adversarial fixture. The test asserts that the policy engine REFUSES this
+      command; the string has to exist for the refusal to be tested.
+    expires: 2027-08-31
+    accepted_by: mrbrownnn
+
+  - id: SEC-CODE-002
+    location: tests/test_skill_supply_chain.py:430
+    reason: >
+      A malicious-skill fixture. The test asserts the inspector flags it and that
+      DevForge never executes it.
+    expires: 2027-08-31
+    accepted_by: mrbrownnn
+
+  - id: SEC-CODE-004
+    location: tests/test_debug.py:134
+    reason: >
+      A parametrised input to the patch-guard test: the guard must detect
+      verify=False in a diff, so the literal appears in the test table.
+    expires: 2027-08-31
+    accepted_by: mrbrownnn
+
+  - id: SEC-CODE-004
+    location: tests/test_debug.py:135
+    reason: >
+      Same parametrised table; check_hostname=False is another pattern the guard
+      is asserted to catch.
+    expires: 2027-08-31
+    accepted_by: mrbrownnn
+
+  - id: SEC-SECRET-001
+    location: tests/test_context.py:248
+    reason: >
+      A synthetic .env fixture. The test asserts the indexer refuses to read it,
+      which requires a credential-shaped file to refuse.
+    expires: 2027-08-31
+    accepted_by: mrbrownnn
+
+  - id: SEC-SECRET-001
+    location: tests/test_context.py:442
+    reason: Same fixture, second test. Synthetic value, never a real credential.
+    expires: 2027-08-31
+    accepted_by: mrbrownnn
+
+  - id: SEC-SECRET-001
+    location: tests/test_security_phase2.py:78
+    reason: >
+      A URL with embedded credentials, used to assert that redaction strips them.
+      The value is fictitious and the host is .test.
+    expires: 2027-08-31
+    accepted_by: mrbrownnn
+
+  # --- the guard's own rule definitions ---------------------------------------
+  - id: SEC-CODE-004
+    location: src/devforge/debug/patch_guard.py:109
+    reason: >
+      This line IS the detection pattern for disabled TLS verification. A scanner
+      flagging the definition of the rule that finds the problem is working
+      correctly and reporting nothing actionable.
+    expires: 2027-08-31
+    accepted_by: mrbrownnn
+
+  # --- security documentation that quotes the phrases it warns about ----------
+  - id: SEC-INJECT-001
+    location: README.md
+    reason: Describes the shell allowlist by quoting the commands it refuses.
+    expires: 2027-08-31
+    accepted_by: mrbrownnn
+
+  - id: SEC-INJECT-001
+    location: docs/runtimes.md
+    reason: Quotes a runtime CLI's own --help output, including its tool flags.
+    expires: 2027-08-31
+    accepted_by: mrbrownnn
+
+  - id: SEC-INJECT-001
+    location: docs/security/mcp.md
+    reason: Shows a refused server command as an example of what is refused.
+    expires: 2027-08-31
+    accepted_by: mrbrownnn
+
+  - id: SEC-INJECT-001
+    location: docs/security/skill-supply-chain.md
+    reason: >
+      Documents the injection phrases the skill inspector looks for. The table of
+      patterns necessarily contains the patterns.
+    expires: 2027-08-31
+    accepted_by: mrbrownnn
+
+  - id: SEC-INJECT-001
+    location: docs/security/threat-model.md
+    reason: Describes T2 prompt injection, quoting example phrasing.
+    expires: 2027-08-31
+    accepted_by: mrbrownnn
+
+  - id: SEC-INJECT-001
+    location: docs/skill-ecosystem.md
+    reason: Lists the inspector's finding names, which are named after the attacks.
+    expires: 2027-08-31
+    accepted_by: mrbrownnn
+
+  - id: SEC-INJECT-001
+    location: security-reports/README.md
+    reason: Explains how skill inspection classifies credential-related instructions.
+    expires: 2027-08-31
+    accepted_by: mrbrownnn
+
+  # --- the adversarial suite, whose fixtures are the dangerous constructs ------
+  #
+  # These are file-scoped rather than line-pinned. Every line in these files that
+  # trips a rule is a deliberate attack payload the test asserts is refused, and
+  # line numbers move whenever a test is added. An acceptance nobody can keep
+  # accurate is one people eventually delete wholesale, which is worse.
+  - id: SEC-CODE-002
+    location: tests/security/test_adversarial.py
+    reason: >
+      Command-injection payloads. Each is asserted to be REFUSED by the policy
+      engine; the string has to exist for the refusal to be testable.
+    expires: 2027-08-31
+    accepted_by: mrbrownnn
+
+  - id: SEC-SECRET-001
+    location: tests/security/test_adversarial.py
+    reason: >
+      Synthetic credentials used to assert that redaction strips them. All are
+      fabricated values against .test hosts, never real secrets.
+    expires: 2027-08-31
+    accepted_by: mrbrownnn
+
+  - id: SEC-CODE-001
+    location: tests/security/test_security_center.py
+    reason: The parametrised table that asserts SEC-CODE-001 fires. It is the fixture.
+    expires: 2027-08-31
+    accepted_by: mrbrownnn
+
+  - id: SEC-CODE-002
+    location: tests/security/test_security_center.py
+    reason: The parametrised table that asserts SEC-CODE-002 fires. It is the fixture.
+    expires: 2027-08-31
+    accepted_by: mrbrownnn
+
+  - id: SEC-CODE-003
+    location: tests/security/test_security_center.py
+    reason: The parametrised table that asserts SEC-CODE-003 fires. It is the fixture.
+    expires: 2027-08-31
+    accepted_by: mrbrownnn
+
+  - id: SEC-CODE-004
+    location: tests/security/test_security_center.py
+    reason: The parametrised table that asserts SEC-CODE-004 fires. It is the fixture.
+    expires: 2027-08-31
+    accepted_by: mrbrownnn
+
+  - id: SEC-CODE-005
+    location: tests/security/test_security_center.py
+    reason: The parametrised table that asserts SEC-CODE-005 fires. It is the fixture.
+    expires: 2027-08-31
+    accepted_by: mrbrownnn
+
+  - id: SEC-SECRET-001
+    location: tests/security/test_security_center.py
+    reason: >
+      Fabricated credential literals used to assert the secret rule fires and that
+      findings never republish the value they matched.
+    expires: 2027-08-31
+    accepted_by: mrbrownnn
