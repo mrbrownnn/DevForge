@@ -1,0 +1,308 @@
+# DevForge skill catalogue
+#
+# Individual installable skills, as opposed to registry/skills.yaml which records a
+# trust decision about a whole *repository*. Nobody wants 41 plugins because they
+# wanted one, so installation works from this file.
+#
+# What an entry is: a claim about WHERE a skill lives - repository, commit, path.
+# What an entry is NOT: a claim about what the skill CONTAINS. `content_hash` and
+# `last_audited` stay null until `devforge skill audit` has actually fetched and
+# inspected the tree, at which point they are filled in from evidence.
+#
+# Pins were verified against the GitHub API on 2026-08-19. Paths were verified by
+# reading each repository's tree, not inferred from a naming convention.
+#
+# risk_level here is the *catalogued expectation* (mostly `read`, since most of these
+# are instruction files). The authoritative number is the one an audit produces from
+# the fetched tree; a mismatch is itself a finding.
+
+version: 1
+generated_at: "2026-08-19"
+description: >
+  Skills from the sources surveyed in docs/skill-ecosystem.md. Inclusion means the
+  source was evaluated and the path verified - not that the skill is trusted. Every
+  entry starts unaudited, and installation refuses anything above the risk ceiling
+  without an explicit human approval.
+
+skills:
+  # ---------------------------------------------------------------- browser / testing
+  - name: webapp-testing
+    version: "1.0.0"
+    description: Test local web applications with Playwright - interaction, screenshots, logs.
+    author: Anthropic
+    source: https://github.com/anthropics/skills
+    source_type: git
+    repository: https://github.com/anthropics/skills
+    commit_sha: 0a64e398ec6bb34a494f0c347e8ccae53a862f8e
+    path: skills/webapp-testing
+    license: Apache-2.0
+    license_file: skills/webapp-testing/LICENSE.txt
+    capabilities: [browser-testing, screenshot-capture, ui-debugging]
+    dependencies: [python3, playwright]
+    supported_runtimes: ["*"]
+    required_tools: [browser, shell, filesystem]
+    required_permissions: [process_execution, network]
+    risk_level: execute
+    security_status: unaudited
+    tags: [browser, playwright, testing]
+    compatibility:
+      agents: [claude-code]
+      notes: Ships helper scripts under scripts/; those are quarantined on install.
+    notes: >
+      Its SKILL.md instructs the agent not to read script source before running it.
+      DevForge never executes skill content, so that instruction has no effect here -
+      but it is why this entry is expected to audit above LOW.
+
+  - name: mcp-builder
+    version: "1.0.0"
+    description: Author MCP servers - structure, transport and tool schema guidance.
+    author: Anthropic
+    source: https://github.com/anthropics/skills
+    source_type: git
+    repository: https://github.com/anthropics/skills
+    commit_sha: 0a64e398ec6bb34a494f0c347e8ccae53a862f8e
+    path: skills/mcp-builder
+    license: Apache-2.0
+    capabilities: [mcp-authoring, protocol-design, tool-schema-design]
+    dependencies: [python3]
+    supported_runtimes: ["*"]
+    required_tools: [filesystem]
+    required_permissions: []
+    risk_level: read
+    security_status: unaudited
+    tags: [mcp, protocol, authoring]
+
+  - name: skill-creator
+    version: "1.0.0"
+    description: Write skills that other agents can actually follow.
+    author: Anthropic
+    source: https://github.com/anthropics/skills
+    source_type: git
+    repository: https://github.com/anthropics/skills
+    commit_sha: 0a64e398ec6bb34a494f0c347e8ccae53a862f8e
+    path: skills/skill-creator
+    license: Apache-2.0
+    capabilities: [skill-authoring, documentation]
+    supported_runtimes: ["*"]
+    required_tools: [filesystem]
+    risk_level: read
+    security_status: unaudited
+    tags: [authoring, meta]
+
+  # ------------------------------------------------------------------- methodology
+  - name: test-driven-development
+    version: "1.0.0"
+    description: Write the failing test first, then the code that satisfies it.
+    author: obra (Jesse Vincent)
+    source: https://github.com/obra/superpowers
+    source_type: git
+    repository: https://github.com/obra/superpowers
+    commit_sha: b36e0829c6d0140e93cfef2ca599b1b07d4a7797
+    path: skills/test-driven-development
+    license: MIT
+    capabilities: [tdd, test-design, red-green-refactor]
+    supported_runtimes: ["*"]
+    required_tools: [filesystem, shell]
+    required_permissions: [process_execution]
+    risk_level: read
+    security_status: unaudited
+    tags: [testing, methodology]
+    compatibility:
+      agents: [claude-code, codex, cursor, devin, hermes, kimi, opencode, gemini]
+      notes: The repository ships session-start hooks; DevForge installs skill content only.
+
+  - name: systematic-debugging
+    version: "1.0.0"
+    description: Reproduce, hypothesise, bisect, fix the cause - not the symptom.
+    author: obra (Jesse Vincent)
+    source: https://github.com/obra/superpowers
+    source_type: git
+    repository: https://github.com/obra/superpowers
+    commit_sha: b36e0829c6d0140e93cfef2ca599b1b07d4a7797
+    path: skills/systematic-debugging
+    license: MIT
+    capabilities: [root-cause-analysis, bisection, reproduction]
+    supported_runtimes: ["*"]
+    required_tools: [filesystem, shell]
+    risk_level: read
+    security_status: unaudited
+    tags: [debugging, methodology]
+
+  - name: verification-before-completion
+    version: "1.0.0"
+    description: Do not declare work done on an agent's say-so.
+    author: obra (Jesse Vincent)
+    source: https://github.com/obra/superpowers
+    source_type: git
+    repository: https://github.com/obra/superpowers
+    commit_sha: b36e0829c6d0140e93cfef2ca599b1b07d4a7797
+    path: skills/verification-before-completion
+    license: MIT
+    capabilities: [verification, completion-criteria]
+    supported_runtimes: ["*"]
+    required_tools: [shell]
+    risk_level: read
+    security_status: unaudited
+    tags: [verification, methodology]
+    notes: The same thesis DevForge enforces mechanically. Worth reading as prior art.
+
+  # ---------------------------------------------------------------------- security
+  - name: supply-chain-risk-auditor
+    version: "1.0.0"
+    description: Audit dependencies and third-party code for supply-chain risk.
+    author: Trail of Bits
+    source: https://github.com/trailofbits/skills
+    source_type: git
+    repository: https://github.com/trailofbits/skills
+    commit_sha: 07bce8a2c8ccc56c5b44b7067a04b8bf46128f05
+    path: plugins/supply-chain-risk-auditor/skills/supply-chain-risk-auditor
+    license: CC-BY-SA-4.0
+    capabilities: [supply-chain-audit, dependency-review]
+    supported_runtimes: ["*"]
+    required_tools: [filesystem, shell]
+    required_permissions: [process_execution]
+    risk_level: read
+    security_status: unaudited
+    tags: [security, supply-chain]
+    notes: >
+      CC-BY-SA-4.0 is share-alike: usable as installed instructions, but copying its
+      text into DevForge documentation would propagate the licence. Prior art for
+      devforge.supplychain.
+
+  - name: semgrep-rule-creator
+    version: "1.0.0"
+    description: Write Semgrep rules that find a class of bug rather than one instance.
+    author: Trail of Bits
+    source: https://github.com/trailofbits/skills
+    source_type: git
+    repository: https://github.com/trailofbits/skills
+    commit_sha: 07bce8a2c8ccc56c5b44b7067a04b8bf46128f05
+    path: plugins/semgrep-rule-creator/skills/semgrep-rule-creator
+    license: CC-BY-SA-4.0
+    capabilities: [static-analysis, rule-authoring]
+    dependencies: [semgrep]
+    supported_runtimes: ["*"]
+    required_tools: [filesystem, shell]
+    required_permissions: [process_execution]
+    risk_level: execute
+    security_status: unaudited
+    tags: [security, static-analysis]
+
+  - name: mutation-testing
+    version: "1.0.0"
+    description: Measure whether a test suite would actually catch a defect.
+    author: Trail of Bits
+    source: https://github.com/trailofbits/skills
+    source_type: git
+    repository: https://github.com/trailofbits/skills
+    commit_sha: 07bce8a2c8ccc56c5b44b7067a04b8bf46128f05
+    path: plugins/mutation-testing/skills/mutation-testing
+    license: CC-BY-SA-4.0
+    capabilities: [mutation-testing, test-quality]
+    supported_runtimes: ["*"]
+    required_tools: [shell]
+    required_permissions: [process_execution]
+    risk_level: execute
+    security_status: unaudited
+    tags: [testing, quality]
+
+  # ------------------------------------------------------- architecture / devops
+  - name: api-and-interface-design
+    version: "1.0.0"
+    description: Design interfaces that survive their second consumer.
+    author: addyosmani (Addy Osmani)
+    source: https://github.com/addyosmani/agent-skills
+    source_type: git
+    repository: https://github.com/addyosmani/agent-skills
+    commit_sha: df1edb2e05487d0aa6d93c747141e0aed1187f25
+    path: skills/api-and-interface-design
+    license: MIT
+    capabilities: [api-design, interface-design, architecture]
+    supported_runtimes: ["*"]
+    required_tools: [filesystem]
+    risk_level: read
+    security_status: unaudited
+    tags: [architecture, api]
+
+  - name: ci-cd-and-automation
+    version: "1.0.0"
+    description: Build pipelines that fail loudly and deploy predictably.
+    author: addyosmani (Addy Osmani)
+    source: https://github.com/addyosmani/agent-skills
+    source_type: git
+    repository: https://github.com/addyosmani/agent-skills
+    commit_sha: df1edb2e05487d0aa6d93c747141e0aed1187f25
+    path: skills/ci-cd-and-automation
+    license: MIT
+    capabilities: [ci-cd, automation, release-engineering]
+    supported_runtimes: ["*"]
+    required_tools: [filesystem, shell]
+    required_permissions: [process_execution]
+    risk_level: read
+    security_status: unaudited
+    tags: [devops, ci-cd]
+    notes: The only credible DevOps coverage found in the Phase 0 survey.
+
+  - name: observability-and-instrumentation
+    version: "1.0.0"
+    description: Instrument a system so an incident is diagnosable after the fact.
+    author: addyosmani (Addy Osmani)
+    source: https://github.com/addyosmani/agent-skills
+    source_type: git
+    repository: https://github.com/addyosmani/agent-skills
+    commit_sha: df1edb2e05487d0aa6d93c747141e0aed1187f25
+    path: skills/observability-and-instrumentation
+    license: MIT
+    capabilities: [observability, logging, metrics, tracing]
+    supported_runtimes: ["*"]
+    required_tools: [filesystem]
+    risk_level: read
+    security_status: unaudited
+    tags: [devops, observability]
+
+  # -------------------------------------------------------------------- ui / ux
+  - name: ui-ux-pro-max
+    version: "2.13.0"
+    description: Design intelligence - UI styles, colour palettes, type pairings, UX guidelines.
+    author: NextLevelBuilder
+    source: https://github.com/nextlevelbuilder/ui-ux-pro-max-skill
+    source_type: git
+    repository: https://github.com/nextlevelbuilder/ui-ux-pro-max-skill
+    commit_sha: 8a1a6d857332da32252d77365da90c3f6293b47b
+    path: .claude/skills/ui-ux-pro-max
+    license: MIT
+    capabilities: [ui-design, design-systems, colour, typography]
+    supported_runtimes: ["*"]
+    required_tools: [filesystem]
+    risk_level: read
+    security_status: unaudited
+    tags: [design, ui, ux]
+    notes: >
+      At least four repositories answer to this skill's name. The pin plus the
+      canonical repository URL is the only thing that distinguishes the real one -
+      see docs/skill-ecosystem.md.
+
+  # -------------------------------------------------------------------- rejected
+  - name: vercel-cli-with-tokens
+    version: "0.0.0"
+    description: Vercel CLI usage involving API tokens. Catalogued as a refusal, not an offer.
+    author: Vercel Labs
+    source: https://github.com/vercel-labs/agent-skills
+    source_type: git
+    repository: https://github.com/vercel-labs/agent-skills
+    commit_sha: b8caa260a420a73042e35521de4b5c8baf6446cc
+    path: skills/vercel-cli-with-tokens
+    license: null
+    capabilities: [deployment, vendor-cli]
+    supported_runtimes: ["*"]
+    required_tools: [shell]
+    required_permissions: [process_execution, credential_read]
+    risk_level: destructive
+    security_status: rejected
+    tags: [deployment, credentials]
+    notes: >
+      Recorded so the decision is visible rather than silent. The source ships six
+      opaque .zip bundles next to their unpacked directories, has no LICENSE file,
+      installs through an off-GitHub service, and this particular skill handles API
+      tokens by name. Installation is refused; revisit if the archives and the
+      licence situation change.
