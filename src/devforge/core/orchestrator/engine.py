@@ -19,6 +19,7 @@ Design constraints this file deliberately respects:
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from devforge.agents.prompt import build_invocation
@@ -87,6 +88,17 @@ class Orchestrator:
                 task, "configuration", f"workflow references undefined verifiers: {sorted(missing)}"
             )
 
+        # A workflow that declares dependencies is a graph, and graphs are run by the
+        # supervisor: parallel levels, conditions, artifact contracts. One executor
+        # for the inside of a step, two for the shape of a run.
+        if any(step.depends_on for step in workflow.steps):
+            from devforge.core.graph.models import graph_from_workflow
+            from devforge.core.graph.supervisor import Supervisor
+
+            return await Supervisor(self, logger=self.logger).run(
+                task, workflow, graph_from_workflow(workflow)
+            )
+
         task.status = TaskStatus.RUNNING
         self.store.save_task(task)
         execution = ExecutionContext(
@@ -114,7 +126,14 @@ class Orchestrator:
             task.current_step = step.id
             self.store.save_task(task)
 
-            outcome = await self._run_step(task, workflow, step, record, specs, execution)
+            outcome = await self.run_step(
+                task=task,
+                step=step,
+                record=record,
+                specs=specs,
+                execution=execution,
+                workflow=workflow,
+            )
             if outcome is not None:
                 return outcome
 
@@ -126,20 +145,35 @@ class Orchestrator:
 
     # -- steps ------------------------------------------------------------------
 
-    async def _run_step(
+    async def run_step(
         self,
+        *,
         task: Task,
-        workflow: WorkflowSpec,
         step: WorkflowStep,
         record: StepRecord,
         specs: dict,
         execution: ExecutionContext,
+        workflow: WorkflowSpec | None = None,
+        artifact_manifest: str = "",
     ) -> TaskResult | None:
-        """Run one step. Returns a TaskResult when the run must stop here."""
+        """Run one step. Returns a TaskResult when the run must stop here.
+
+        Public because the graph supervisor drives nodes through it: the inside of a
+        node - agent, verification, repair, approval - is identical whether the step
+        came from a sequential workflow or a graph, and duplicating it would let the
+        two diverge.
+
+        ``artifact_manifest`` is how a graph node learns what upstream agents
+        produced. It carries references and previews, never a transcript.
+        """
         record.status = StepStatus.RUNNING
         record.started_at = record.started_at or utcnow()
         logger = self.logger.bind(task_id=task.task_id, step=step.id, agent=step.agent)
-        logger.info("step.start", kind=step.kind.value, workflow=workflow.name)
+        logger.info(
+            "step.start",
+            kind=step.kind.value,
+            workflow=workflow.name if workflow else task.workflow,
+        )
 
         if step.kind is StepKind.APPROVAL:
             return self._run_approval_step(task, step, record, logger)
@@ -170,7 +204,7 @@ class Orchestrator:
                 previous = record.attempts[-2] if len(record.attempts) > 1 else None
                 step_context = execution.for_step(step.id, attempt_number)
                 result = await self._invoke_agent(
-                    task, step, attempt_number, previous, step_context
+                    task, step, attempt_number, previous, step_context, artifact_manifest
                 )
                 attempt.agent_result = result
                 task.artifacts.extend(result.artifacts)
@@ -315,6 +349,7 @@ class Orchestrator:
         attempt_number: int,
         previous: StepAttempt | None,
         execution: ExecutionContext,
+        artifact_manifest: str = "",
     ):
         logger = execution.logger
         spec = self.agents.get(step.agent)
@@ -328,7 +363,7 @@ class Orchestrator:
             agent=spec,
             skills=skills,
             memory=self.store.read_memory(),
-            context_pack=self._context_pack(task, step, logger),
+            context_pack=self._compose_context(task, step, logger, artifact_manifest),
             tools=tools,
             attempt=attempt_number,
             previous_attempt=previous if previous and previous.failed_verifiers else None,
@@ -342,10 +377,20 @@ class Orchestrator:
             skills=invocation.skills,
             tools=invocation.tools,
         )
-        # Always an explicit subset: a step that declared no tools gets an empty scope,
-        # never the whole registry by omission.
+        # Two narrowings, both explicit. Tools: a step that declared none gets an
+        # empty scope, never the whole registry by omission. Policy: the agent's own
+        # declared permissions, intersected with the project's - an agent spec can
+        # remove access, never add it.
+        from devforge.policy.agent_scope import scope_for_agent
+
+        scoped = execution
+        agent_policy = scope_for_agent(self.policy, spec.permissions)
+        if agent_policy is not self.policy:
+            scoped = replace(execution, policy=agent_policy)
+            logger.info("agent.scope", agent=spec.name, permissions=spec.permissions.summary())
+
         result = await self.runtime.execute(
-            invocation, execution.for_runtime(self.tools.subset(tools))
+            invocation, scoped.for_runtime(self.tools.subset(tools))
         )
         logger.info(
             "agent.result",
@@ -355,6 +400,16 @@ class Orchestrator:
             summary=result.summary,
         )
         return result
+
+    def _compose_context(
+        self, task: Task, step: WorkflowStep, logger: RunLogger, artifact_manifest: str = ""
+    ) -> str:
+        """Retrieved context plus whatever upstream agents produced."""
+        pack = self._context_pack(task, step, logger)
+        if not artifact_manifest:
+            return pack
+        upstream = f"## Artifacts from earlier agents\n\n{artifact_manifest}"
+        return f"{pack}\n\n{upstream}" if pack else upstream
 
     def _context_pack(self, task: Task, step: WorkflowStep, logger: RunLogger) -> str:
         """Retrieved context for this step, or nothing if the project has no index.

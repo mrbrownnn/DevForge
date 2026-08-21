@@ -55,6 +55,9 @@ class MockStep:
     fail_attempts: int = 0
     #: Tool calls to make through the executor, in order.
     tool_calls: list[MockToolCall] = field(default_factory=list)
+    #: Set false to simulate an agent that reports success without writing what it
+    #: promised - the case the harness must catch rather than believe.
+    write_declared_outputs: bool = True
 
 
 class MockAgentRuntime(AgentRuntime):
@@ -113,8 +116,9 @@ class MockAgentRuntime(AgentRuntime):
         # verifier has something genuine to check. The verification is real either way -
         # only the file content is a stand-in.
         writes = dict(step.writes)
-        for declared in invocation.context.get("outputs", []):
-            writes.setdefault(declared, self._placeholder(invocation, declared))
+        if step.write_declared_outputs:
+            for declared in invocation.context.get("outputs", []):
+                writes.setdefault(declared, self._placeholder(invocation, declared))
 
         for relative, content in writes.items():
             target = workspace / relative
