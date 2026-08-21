@@ -10,3 +10,12 @@ venv/
 .devforge/
 scratch/
 .claude/
+
+# Credentials must never reach a commit; the ignore rule has to exist
+# before the mistake does. DevForge's own policy also denies reading these.
+.env
+.env.*
+*.pem
+*.key
+id_rsa*
+secrets/
