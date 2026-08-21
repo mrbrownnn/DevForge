@@ -1,0 +1,295 @@
+# DevForge repair benchmark: deterministic Python defects.
+#
+# Each case is a complete, tiny project: source with one seeded defect, a test
+# suite that fails because of it, and a reference fix. Nothing here touches the
+# network, the clock, the filesystem outside its own temporary workspace, or any
+# dependency beyond pytest - a benchmark whose score moves for reasons unrelated
+# to repair quality measures nothing.
+#
+# Rules for adding a case:
+#   * exactly one defect, and the failing assertion must name the real symptom;
+#   * at least one test that already passes, so a solver that deletes the suite
+#     scores zero rather than accidentally passing;
+#   * the reference fix must change source, never tests.
+version: 1
+
+cases:
+  - id: off-by-one
+    title: Slice boundary drops an element
+    category: boundary
+    description: >
+      last_n returns one item too few because the slice start is computed with an
+      off-by-one error. Classic boundary defect: correct for n=1, wrong for all
+      larger n.
+    files:
+      app.py: |
+        def last_n(items, n):
+            """Return the final n items, or an empty list when n is zero."""
+            if not n:
+                return []
+            return items[-n + 1:]
+      test_app.py: |
+        from app import last_n
+
+
+        def test_returns_the_final_two():
+            assert last_n([1, 2, 3, 4], 2) == [3, 4]
+
+
+        def test_single_item_still_works():
+            assert last_n([1, 2, 3], 1) == [3]
+
+
+        def test_zero_is_empty():
+            assert last_n([1, 2, 3], 0) == []
+    fix:
+      app.py: |
+        def last_n(items, n):
+            """Return the final n items, or an empty list when n is zero."""
+            if not n:
+                return []
+            return items[-n:]
+
+  - id: mutable-default
+    title: Shared mutable default argument
+    category: state
+    description: >
+      The default list is created once at definition time, so every call appends
+      to the same object and results leak between callers.
+    files:
+      app.py: |
+        def collect(item, bucket=[]):
+            """Collect item into bucket and return it."""
+            bucket.append(item)
+            return bucket
+      test_app.py: |
+        from app import collect
+
+
+        def test_calls_do_not_share_state():
+            assert collect(1) == [1]
+            assert collect(2) == [2]
+
+
+        def test_explicit_bucket_is_used():
+            bucket = [0]
+            assert collect(1, bucket) == [0, 1]
+    fix:
+      app.py: |
+        def collect(item, bucket=None):
+            """Collect item into bucket and return it."""
+            if bucket is None:
+                bucket = []
+            bucket.append(item)
+            return bucket
+
+  - id: none-attribute
+    title: Missing key yields None, then AttributeError
+    category: null-handling
+    description: >
+      dict.get returns None for an absent key and the code calls .strip() on it,
+      so a user record without a name crashes instead of rendering blank.
+    files:
+      app.py: |
+        def display_name(user):
+            """Human-readable name for a user record."""
+            return user.get("name").strip()
+      test_app.py: |
+        from app import display_name
+
+
+        def test_missing_name_is_blank():
+            assert display_name({}) == ""
+
+
+        def test_name_is_trimmed():
+            assert display_name({"name": "  Ada  "}) == "Ada"
+    fix:
+      app.py: |
+        def display_name(user):
+            """Human-readable name for a user record."""
+            return (user.get("name") or "").strip()
+
+  - id: integer-division
+    title: Floor division truncates the average
+    category: arithmetic
+    description: >
+      The average uses // so every non-integer result is silently rounded down.
+      The failure is quiet, which is what makes it worth a benchmark case.
+    files:
+      app.py: |
+        def average(values):
+            """Arithmetic mean of values."""
+            return sum(values) // len(values)
+      test_app.py: |
+        import pytest
+
+        from app import average
+
+
+        def test_fractional_average():
+            assert average([1, 2]) == 1.5
+
+
+        def test_whole_average():
+            assert average([2, 4]) == 3
+
+
+        def test_empty_is_an_error():
+            with pytest.raises(ZeroDivisionError):
+                average([])
+    fix:
+      app.py: |
+        def average(values):
+            """Arithmetic mean of values."""
+            return sum(values) / len(values)
+
+  - id: case-sensitive-lookup
+    title: Email lookup is case sensitive
+    category: comparison
+    description: >
+      Email addresses are case insensitive in practice, but the comparison is
+      exact, so a user who typed a capital letter appears not to exist.
+    files:
+      app.py: |
+        def find_user(users, email):
+            """Find a user by email address."""
+            for user in users:
+                if user["email"] == email:
+                    return user
+            return None
+      test_app.py: |
+        from app import find_user
+
+        USERS = [{"email": "ada@example.com", "name": "Ada"}]
+
+
+        def test_exact_match():
+            assert find_user(USERS, "ada@example.com")["name"] == "Ada"
+
+
+        def test_case_is_ignored():
+            assert find_user(USERS, "Ada@Example.com")["name"] == "Ada"
+
+
+        def test_unknown_is_none():
+            assert find_user(USERS, "nobody@example.com") is None
+    fix:
+      app.py: |
+        def find_user(users, email):
+            """Find a user by email address, case insensitively."""
+            needle = email.lower()
+            for user in users:
+                if user["email"].lower() == needle:
+                    return user
+            return None
+
+  - id: swallowed-exception
+    title: Broad except hides an invalid value
+    category: error-handling
+    description: >
+      The parser catches everything and returns 0, so a typo in configuration
+      becomes a silent connection to port 0. Fixing this means removing the
+      handler, not adding another layer around it.
+    files:
+      app.py: |
+        def parse_port(text):
+            """Parse a TCP port from configuration text."""
+            try:
+                return int(text)
+            except Exception:
+                return 0
+      test_app.py: |
+        import pytest
+
+        from app import parse_port
+
+
+        def test_valid_port():
+            assert parse_port("8080") == 8080
+
+
+        def test_invalid_port_is_reported():
+            with pytest.raises(ValueError):
+                parse_port("http")
+    fix:
+      app.py: |
+        def parse_port(text):
+            """Parse a TCP port from configuration text."""
+            return int(text)
+
+  - id: even-length-median
+    title: Median ignores the even-length case
+    category: boundary
+    description: >
+      With an even number of values the median is the mean of the middle pair;
+      this implementation returns only the upper one.
+    files:
+      app.py: |
+        def median(values):
+            """Middle value of a sequence."""
+            ordered = sorted(values)
+            middle = len(ordered) // 2
+            return ordered[middle]
+      test_app.py: |
+        from app import median
+
+
+        def test_odd_length():
+            assert median([3, 1, 2]) == 2
+
+
+        def test_even_length():
+            assert median([1, 2, 3, 4]) == 2.5
+    fix:
+      app.py: |
+        def median(values):
+            """Middle value of a sequence."""
+            ordered = sorted(values)
+            middle = len(ordered) // 2
+            if len(ordered) % 2:
+                return ordered[middle]
+            return (ordered[middle - 1] + ordered[middle]) / 2
+
+  - id: shared-class-state
+    title: Class attribute shared by every instance
+    category: state
+    description: >
+      counts lives on the class, so two counters that should be independent
+      accumulate into the same dictionary.
+    files:
+      app.py: |
+        class Counter:
+            """Counts occurrences of labels."""
+
+            counts = {}
+
+            def add(self, label):
+                self.counts[label] = self.counts.get(label, 0) + 1
+                return self.counts[label]
+      test_app.py: |
+        from app import Counter
+
+
+        def test_counts_accumulate():
+            counter = Counter()
+            counter.add("a")
+            assert counter.add("a") == 2
+
+
+        def test_instances_are_independent():
+            first = Counter()
+            second = Counter()
+            first.add("a")
+            assert second.add("a") == 1
+    fix:
+      app.py: |
+        class Counter:
+            """Counts occurrences of labels."""
+
+            def __init__(self):
+                self.counts = {}
+
+            def add(self, label):
+                self.counts[label] = self.counts.get(label, 0) + 1
+                return self.counts[label]

@@ -39,6 +39,7 @@ where = ["src"]
     "policies/*.yaml",
     "templates/*.md",
     "skills/*/SKILL.md",
+    "benchmarks/*.yaml",
 ]
 
 [tool.pytest.ini_options]
