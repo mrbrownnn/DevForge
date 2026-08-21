@@ -31,6 +31,11 @@ EXPECTED_DOCS = (
 )
 
 
+def cli_group_names() -> list[str]:
+    """Names of the registered sub-apps (`devforge security`, `skill`, ...)."""
+    return sorted(group.name or '' for group in app.registered_groups)
+
+
 def cli_command_names() -> list[str]:
     # typer leaves `name` unset when it is inferred from the function name.
     return sorted(
@@ -49,6 +54,28 @@ def test_readme_documents_every_cli_command() -> None:
 
     undocumented = [name for name in cli_command_names() if f"devforge {name}" not in readme]
     assert not undocumented, f"CLI commands missing from the README: {undocumented}"
+
+
+def test_readme_documents_every_command_group() -> None:
+    """Sub-apps are commands too; the README table has to name them."""
+    readme = README.read_text(encoding='utf-8')
+
+    undocumented = [
+        name for name in cli_group_names() if f'devforge {name}' not in readme
+    ]
+    assert not undocumented, f'command groups missing from the README: {undocumented}'
+
+
+def test_security_center_documents_its_own_limits() -> None:
+    """The two claims most likely to be over-read: the scan and the audit."""
+    page = (DOCS / 'security' / 'security-center.md').read_text(encoding='utf-8')
+
+    assert 'no OS-level sandbox' in page
+    assert 'not evidence that the code is safe' in page
+    assert 'no vulnerability database' in page
+    assert 'does not claim to be secure' in page
+    for threat in ('TM1', 'TM6', 'TM12'):
+        assert threat in page
 
 
 def test_readme_covers_the_required_sections() -> None:
