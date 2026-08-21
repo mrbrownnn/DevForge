@@ -14,7 +14,7 @@ from devforge.core.workflow.spec import (
     WorkflowStep,
 )
 
-BUILTIN_WORKFLOWS = {"feature", "bugfix", "refactor", "clone", "demo"}
+BUILTIN_WORKFLOWS = {"feature", "bugfix", "refactor", "clone", "demo", "multi-agent-feature"}
 
 
 def write_workflow(path: Path, body: str) -> Path:
@@ -125,7 +125,10 @@ def test_loader_requires_mapping(tmp_path: Path) -> None:
 
 def test_unknown_workflow_lists_available() -> None:
     loader = WorkflowLoader.for_project(None)
-    with pytest.raises(WorkflowError, match="Available: bugfix, clone, demo, feature, refactor"):
+    with pytest.raises(
+        WorkflowError,
+        match="Available: bugfix, clone, demo, feature, multi-agent-feature, refactor",
+    ):
         loader.load("nope")
 
 
