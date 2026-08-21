@@ -152,6 +152,28 @@ class NetworkEntry(BaseModel):
         return urlsplit(self.url).hostname or ""
 
 
+class ConsoleMessage(BaseModel):
+    """One console line or uncaught page error.
+
+    The console is where a broken page says what is wrong, which makes it evidence
+    a debugger needs. It is also attacker-controlled text on a hostile site, so the
+    text is bounded here and every consumer treats it as data - never as
+    instruction, never as a path to open.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: log, info, warning, error, or "pageerror" for an uncaught exception.
+    level: str = "log"
+    text: str = ""
+    #: "file:line" reported by the browser, kept for locating the source.
+    location: str = ""
+
+    @property
+    def is_error(self) -> bool:
+        return self.level in ("error", "pageerror")
+
+
 class CaptureStatus(str, Enum):
     OK = "ok"
     PARTIAL = "partial"
@@ -173,6 +195,8 @@ class PageSnapshot(BaseModel):
     elements: list[ElementSnapshot] = Field(default_factory=list)
     assets: list[AssetRef] = Field(default_factory=list)
     network: list[NetworkEntry] = Field(default_factory=list)
+    #: Console output and uncaught errors, in the order the page emitted them.
+    console: list[ConsoleMessage] = Field(default_factory=list)
     #: Colours actually painted, most frequent first.
     palette: list[str] = Field(default_factory=list)
     fonts: list[str] = Field(default_factory=list)
@@ -189,6 +213,19 @@ class PageSnapshot(BaseModel):
     @property
     def blocked_requests(self) -> list[NetworkEntry]:
         return [entry for entry in self.network if entry.blocked]
+
+    @property
+    def console_errors(self) -> list[ConsoleMessage]:
+        return [entry for entry in self.console if entry.is_error]
+
+    @property
+    def failed_requests(self) -> list[NetworkEntry]:
+        """Blocked, or answered with an HTTP error - both are debugging evidence."""
+        return [
+            entry
+            for entry in self.network
+            if entry.blocked or (entry.status is not None and entry.status >= 400)
+        ]
 
     @property
     def hosts(self) -> list[str]:

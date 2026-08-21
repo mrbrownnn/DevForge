@@ -109,6 +109,7 @@ class BrowserTool(Tool):
         "styles",
         "assets",
         "network",
+        "console",
     )
 
     descriptor = ToolDescriptor(
@@ -126,6 +127,7 @@ class BrowserTool(Tool):
             "computed-styles",
             "asset-inventory",
             "network-inventory",
+            "console-capture",
             "screenshot",
         ],
         permissions=ToolPermissions(network=True, filesystem_write=True, gates=[BROWSER_GATE]),
@@ -159,6 +161,7 @@ class BrowserTool(Tool):
             ),
             "assets": _url_action(viewport=_VIEWPORT),
             "network": _url_action(viewport=_VIEWPORT),
+            "console": _url_action(viewport=_VIEWPORT, interactions=_INTERACTIONS),
         },
         output_schema=TOOL_OUTPUT_SCHEMA,
     )
@@ -254,7 +257,7 @@ class BrowserTool(Tool):
         async with browser_session(
             policy, viewport, logger=ctx.logger, timeout_ms=timeout_ms
         ) as session:
-            if action in {"snapshot", "inspect", "styles", "assets", "network"}:
+            if action in {"snapshot", "inspect", "styles", "assets", "network", "console"}:
                 snapshot = await capture_page(
                     session,
                     url,
@@ -381,10 +384,22 @@ def _snapshot_result(tool, action, params, ctx, snapshot, duration_ms) -> ToolRe
         data = {
             "requests": [entry.model_dump() for entry in snapshot.network[:200]],
             "hosts": snapshot.hosts,
+            "failed": [entry.model_dump() for entry in snapshot.failed_requests[:100]],
         }
         summary = (
             f"{len(snapshot.network)} requests to {len(snapshot.hosts)} hosts "
-            f"({len(blocked)} blocked)"
+            f"({len(blocked)} blocked, {len(snapshot.failed_requests)} failed)"
+        )
+    elif action == "console":
+        # Console text is written by the page. It is returned as data for a human
+        # or a debugger to read, never as something to act on.
+        data = {
+            "messages": [entry.model_dump() for entry in snapshot.console[:200]],
+            "errors": len(snapshot.console_errors),
+        }
+        summary = (
+            f"{len(snapshot.console)} console message(s), "
+            f"{len(snapshot.console_errors)} error(s) on {snapshot.url}"
         )
     elif action == "styles":
         data = {

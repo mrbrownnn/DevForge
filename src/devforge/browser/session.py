@@ -47,7 +47,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from devforge.browser.models import NetworkEntry, Viewport
+from devforge.browser.models import ConsoleMessage, NetworkEntry, Viewport
 from devforge.core.errors import DevForgeError
 from devforge.observability.logging import RunLogger, null_logger
 from devforge.policy.models import NetworkPolicy
@@ -57,6 +57,9 @@ from devforge.policy.network import check_destination
 ALLOWED_SCHEMES = frozenset({"http", "https", "about", "blob"})
 
 DEFAULT_TIMEOUT_MS = 20_000
+#: A page controls how much it logs, so we control how much we keep.
+MAX_CONSOLE_MESSAGES = 200
+MAX_CONSOLE_CHARS = 2_000
 #: A page that has not settled by now is captured as-is rather than waited on forever.
 SETTLE_TIMEOUT_MS = 5_000
 
@@ -131,6 +134,7 @@ class BrowserSession:
     logger: RunLogger = field(default_factory=null_logger)
     timeout_ms: int = DEFAULT_TIMEOUT_MS
     network: list[NetworkEntry] = field(default_factory=list)
+    console: list[ConsoleMessage] = field(default_factory=list)
     _context: object | None = field(default=None, init=False, repr=False)
     _browser: object | None = field(default=None, init=False, repr=False)
     _playwright: object | None = field(default=None, init=False, repr=False)
@@ -223,6 +227,8 @@ class BrowserSession:
         page = await self._context.new_page()
         page.on("download", lambda download: asyncio.ensure_future(download.cancel()))
         page.on("dialog", lambda dialog: asyncio.ensure_future(dialog.dismiss()))
+        page.on("console", self._record_console)
+        page.on("pageerror", self._record_page_error)
 
         response = await page.goto(url, wait_until=wait_until, timeout=self.timeout_ms)
         await self._settle(page)
@@ -233,6 +239,38 @@ class BrowserSession:
             viewport=await page.evaluate("() => `${innerWidth}x${innerHeight}`"),
         )
         return page, response
+
+    # -- console ----------------------------------------------------------------
+
+    def _record_console(self, message) -> None:
+        """A page's own console output, bounded and never executed.
+
+        Capped in both length and count: a page in a render loop can emit console
+        lines faster than we can store them, and an unbounded log is a memory
+        exhaustion primitive handed to whoever wrote the page.
+        """
+        if len(self.console) >= MAX_CONSOLE_MESSAGES:
+            return
+        location = ""
+        with suppress(Exception):
+            spot = message.location or {}
+            if spot.get("url"):
+                location = f"{spot['url']}:{spot.get('lineNumber', 0)}"
+        with suppress(Exception):
+            self.console.append(
+                ConsoleMessage(
+                    level=str(message.type)[:20],
+                    text=str(message.text)[:MAX_CONSOLE_CHARS],
+                    location=location[:300],
+                )
+            )
+
+    def _record_page_error(self, error) -> None:
+        if len(self.console) >= MAX_CONSOLE_MESSAGES:
+            return
+        self.console.append(
+            ConsoleMessage(level="pageerror", text=str(error)[:MAX_CONSOLE_CHARS])
+        )
 
     async def _settle(self, page) -> None:
         """Give the page a moment to finish, but never wait indefinitely."""

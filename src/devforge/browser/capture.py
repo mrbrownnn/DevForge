@@ -264,6 +264,7 @@ def _to_snapshot(url, viewport, raw, response, session, screenshot) -> PageSnaps
         elements=elements,
         assets=assets,
         network=list(session.network),
+        console=list(session.console),
         palette=palette,
         fonts=fonts,
         screenshot_path=screenshot,
