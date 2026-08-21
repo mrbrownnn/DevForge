@@ -48,6 +48,20 @@ Each action builds its own argv and goes through the same policy check as any ot
 command, so `git push` is gated exactly as it would be from the shell tool. There is no
 side door.
 
+### debug
+
+Actions: `reproduce`, `evidence`, `review_patch`, `report`.
+
+The agent-facing surface of the debugging pipeline. `reproduce` runs a command
+repeatedly and classifies it as deterministic, flaky or not reproduced; `evidence`
+collects traces, failing tests, logs, the diff, the implicated source and runtime
+state, redacted and with refused paths listed; `review_patch` reads the diff for the
+ways a repair can cheat; `report` writes the repair report.
+
+It holds no network permission and no delete permission. Its "changed files" section
+comes from `git`, not from what the patch claims to have touched - the report is only
+worth having if a reviewer can trust it. See [debugging.md](debugging.md).
+
 ## Browser and MCP
 
 Both are implemented as of Phase 2. Availability is still *discovered*, never assumed:

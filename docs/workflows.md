@@ -81,7 +81,7 @@ permission policy, so a verifier cannot probe outside the workspace.
 | --- | --- | --- |
 | `demo` | requirements → planning → **approval** → review → verification | Completes in any project; verifies declared artifacts exist |
 | `feature` | requirements → planning → **approval** → implementation → unit tests → verification → review → **approval** | The default |
-| `bugfix` | reproduce → diagnose → **approval** → fix → regression test → verification | The regression test is the proof |
+| `bugfix` | reproduce → evidence → analyse → **approval** → patch + regression test → report → verification | The patch itself is reviewed, not just the suite |
 | `refactor` | analyse → **baseline verify** → plan → **approval** → refactor → tests → verification | Baseline first, or there is no safety net |
 | `clone` | recon → design analysis → **approval** → implementation → visual refinement → visual verification → **approval** | Needs `devforge[browser]` and a `reference` URL; see [browser.md](browser.md) |
 

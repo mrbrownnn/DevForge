@@ -134,6 +134,7 @@ Full details: [docs/architecture.md](docs/architecture.md).
 | **Runtime** | The adapter that actually executes an agent. | [docs/runtimes.md](docs/runtimes.md) |
 | **Verifier** | The only authority on whether work is correct. | [docs/workflows.md](docs/workflows.md) |
 | **Policy** | Permission allowlists and approval gates. | [docs/security.md](docs/security.md) |
+| **Patch guard** | Reads a repair's diff for the ways it can cheat. | [docs/debugging.md](docs/debugging.md) |
 
 ---
 
@@ -152,6 +153,7 @@ Full details: [docs/architecture.md](docs/architecture.md).
 | `devforge workflows` | List available workflows |
 | `devforge runtimes` | List agent runtimes and their availability |
 | `devforge doctor` | Environment check: what works, what is unavailable |
+| `devforge bench` | Repair success rate against the seeded-defect benchmark (`--solver reference\|cheat\|none`) |
 | `devforge index` | Build the codebase index (structure only, no file contents) |
 | `devforge context "task"` | Show the context pack an agent would receive (`--compare` measures it) |
 | `devforge context-doctor` | Report whether the index still matches the working tree |
@@ -357,6 +359,15 @@ Stated plainly, because a harness that hides its gaps is worse than useless:
   [docs/browser.md](docs/browser.md).
 - **The clone workflow needs configuring.** The built-in ships without a reference URL,
   because the target is task-specific; copy it to `workflows/clone.yaml` and set one.
+- **The patch guard catches known cheating patterns, not all of them.** It reads the
+  diff for removed assertions, added skip markers, disabled auth, bypassed validation,
+  swallowed exceptions and security settings turned off. An agent can still weaken a
+  check in a way no pattern anticipates - by rewriting a helper an assertion calls, say.
+  It raises the cost of the obvious cheats and claims nothing more.
+- **The repair benchmark scores one solver on eight seeded defects.** `devforge bench`
+  measures a repair success rate against small, self-contained Python bugs with known
+  fixes. It is not a prediction about real defects in real codebases. See
+  [docs/debugging.md](docs/debugging.md).
 - **One real runtime adapter.** Claude Code. Codex/OpenCode adapters are interface
   work, not present.
 - **Agent tool calls are proxied only for runtimes that delegate.** A runtime given a
