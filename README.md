@@ -191,10 +191,28 @@ steps:
     gate: final_review
 ```
 
-Shipped workflows: `demo`, `feature`, `bugfix`, `refactor`, `clone`
+Shipped workflows: `demo`, `feature`, `multi-agent-feature`, `bugfix`, `refactor`, `clone`
 (`clone` is an executable extension point — see Limitations).
 
 ---
+
+## Multi-agent orchestration
+
+A multi-agent run is an explicit **task graph**, not a swarm. Agents never talk to each
+other: each declares the artifacts it produces and consumes, and the supervisor passes
+file references between them.
+
+```bash
+devforge run --workflow multi-agent-feature --task "Add rate limiting" --interactive
+```
+
+`architect → coder → (tester ‖ security ‖ docs) → reviewer`. The three middle agents run
+concurrently because the graph says they are independent; review waits for all three.
+Each agent gets least privilege - the documentation agent has no shell and cannot write
+source; only the coder writes source. A failure preserves artifacts, blocks downstream
+nodes rather than running them on missing inputs, and leaves siblings' work intact.
+
+Details: [docs/multi-agent.md](docs/multi-agent.md).
 
 ## Context engineering
 
@@ -354,7 +372,7 @@ Stated plainly, because a harness that hides its gaps is worse than useless:
 ## Development
 
 ```bash
-python -m pytest -q      # 406 tests, no network, no paid API calls
+python -m pytest -q      # 460 tests, no network, no paid API calls
 ruff check . && ruff format --check .
 ```
 
