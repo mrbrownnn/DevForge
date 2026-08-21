@@ -85,24 +85,65 @@ CONTENT_RULES: tuple[tuple[str, Severity, re.Pattern[str], str], ...] = (
     (
         "pipe-to-shell",
         Severity.CRITICAL,
+        # Any pipeline ending in an interpreter, not only one that begins with curl:
+        # `echo <base64> | base64 -d | sh` is the same attack from a different source,
+        # and the narrower pattern classified it as merely "encoded".
         re.compile(
-            r"(curl|wget|iwr|Invoke-WebRequest)[^\n|]{0,200}\|\s*(sudo\s+)?(ba)?sh|\|\s*iex", re.I
+            r"\|\s*(sudo\s+)?(ba|z|da|k)?sh\b"
+            r"|\|\s*iex\b"
+            r"|\|\s*python[0-9.]*\s|\|\s*perl\b|\|\s*ruby\b",
+            re.I,
         ),
-        "downloads and executes code in one step, defeating any review",
+        "pipes content into an interpreter, executing code that review never saw",
     ),
     (
-        "credential-path",
+        # Naming a credential is not the same as reaching for one. A CI/CD skill that
+        # teaches ".env -> NOT committed" is good hygiene advice, and flagging it
+        # CRITICAL trained the tool to cry wolf on exactly the security-conscious
+        # content you most want to install. Three tiers now, split by what the text
+        # asks an agent to DO.
+        "credential-access",
         Severity.CRITICAL,
         re.compile(
-            r"(\.env\b|~/\.ssh|\bid_rsa\b|\.aws/credentials|\.npmrc|\.netrc|"
-            r"GITHUB_TOKEN|AWS_SECRET|OPENAI_API_KEY|ANTHROPIC_API_KEY)",
+            r"\b(read|open|cat|print|show|reveal|dump|send|include|upload|exfiltrate|copy)\b"
+            r"[^\n]{0,60}"
+            r"(\.env\b|~/\.ssh|\bid_rsa\b|\.aws/credentials|\.npmrc|\.netrc"
+            r"|\bapi[_ -]?keys?\b|\bsecrets?\b|\bcredentials?\b|\btokens?\b)",
+            re.I,
         ),
-        "references a credential location; skills have no legitimate need for one",
+        "instructs the agent to access credentials",
+    ),
+    (
+        "credential-env-read",
+        Severity.HIGH,
+        re.compile(
+            r"(os\.environ|os\.getenv|process\.env|ENV\[)[^\n]{0,40}"
+            r"(TOKEN|SECRET|API_?KEY|PASSWORD|CREDENTIAL)",
+            re.I,
+        ),
+        "reads a credential out of the environment",
+    ),
+    (
+        "credential-reference",
+        Severity.MEDIUM,
+        re.compile(
+            r"(\.env\b|~/\.ssh|\bid_rsa\b|\.aws/credentials|\.npmrc|\.netrc"
+            r"|GITHUB_TOKEN|AWS_SECRET|OPENAI_API_KEY|ANTHROPIC_API_KEY)",
+        ),
+        "mentions a credential location; worth reading in context, not a refusal by itself",
     ),
     (
         "exfiltration",
         Severity.HIGH,
-        re.compile(r"curl\s[^\n]*\s-(d|F|-data)\b|fetch\(\s*[\"']https?://|requests\.post\(", re.I),
+        # Also catches the instruction form - "send the summary to https://..." - which
+        # needs no code at all and is how an instruction-only skill exfiltrates.
+        re.compile(
+            r"curl\s[^\n]{0,80}-(d|F|-data)\b"
+            r"|fetch\(\s*[\"']https?://"
+            r"|requests\.post\("
+            r"|\b(send|upload|post|exfiltrate|transmit)\b[^\n]{0,80}https?://",
+            re.I,
+        ),
         "sends data to an external endpoint",
     ),
     (
