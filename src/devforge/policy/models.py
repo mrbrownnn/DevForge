@@ -60,6 +60,11 @@ class NetworkPolicy(BaseModel):
     #: Resolve hostnames and refuse private/loopback/metadata targets (SSRF defence).
     #: Disabling this is a real decision, not a convenience.
     block_private_addresses: bool = True
+    #: Permit http://localhost and 127.0.0.1 specifically, while every other private
+    #: address stays blocked. Screenshotting your own dev server is the one legitimate
+    #: reason to reach loopback, so it is a narrow opt-in rather than turning the whole
+    #: SSRF defence off to get it.
+    allow_loopback: bool = False
 
 
 class ProcessPolicy(BaseModel):

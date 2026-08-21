@@ -104,6 +104,16 @@ filesystem:
     - "*.tsx"
     - "*.js"
     - "*.jsx"
+    # A clone or frontend run writes markup, styles and images, and the browser
+    # tool writes screenshots. Without these the capability exists but the output
+    # has nowhere legal to land.
+    - "*.html"
+    - "*.css"
+    - "site/**"
+    - "public/**"
+    - "static/**"
+    - "assets/**"
+    - ".devforge/visual/**"
 
   # Denials win over read and write rules.
   deny:
