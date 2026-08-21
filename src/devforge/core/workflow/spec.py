@@ -93,6 +93,19 @@ class WorkflowStep(BaseModel):
     # approval steps
     gate: str | None = None
 
+    # -- task graph (Phase 5) --------------------------------------------------
+    #: Nodes that must finish before this one starts. Empty means "after the
+    #: previous step", so existing sequential workflows are unchanged.
+    depends_on: list[str] = Field(default_factory=list)
+    #: Artifacts this step writes. Downstream steps consume these by name - that is
+    #: the only channel between agents; there is no agent-to-agent conversation.
+    produces: list[str] = Field(default_factory=list)
+    #: Artifacts this step needs. Every one must be produced by some other node.
+    consumes: list[str] = Field(default_factory=list)
+    #: Guard from a closed vocabulary: always, success(node), failed(node),
+    #: skipped(node), artifact_exists(name). Never an evaluated expression.
+    when: str = ""
+
     on_failure: OnFailure = OnFailure.FAIL
 
     @model_validator(mode="after")
@@ -109,6 +122,21 @@ class WorkflowStep(BaseModel):
             raise ValueError(f"step '{self.id}': max_attempts must be >= 1")
         if not self.name:
             self.name = self.id.replace("-", " ").replace("_", " ").title()
+        if self.consumes and self.kind is StepKind.APPROVAL:
+            raise ValueError(f"step '{self.id}': an approval step consumes no artifacts")
+        # `outputs` predates the graph and `produces` came with it; they are one
+        # concept. Mirroring both ways keeps a single source of truth - the runtime
+        # reads `outputs`, the supervisor reads `produces`, and a step that set only
+        # one would otherwise be invisible to the other.
+        if self.outputs and not self.produces:
+            self.produces = list(self.outputs)
+        elif self.produces and not self.outputs:
+            self.outputs = list(self.produces)
+        elif self.outputs and self.produces and set(self.outputs) != set(self.produces):
+            raise ValueError(
+                f"step '{self.id}': 'outputs' and 'produces' name the same artifacts; "
+                "declaring two different lists is ambiguous - use one"
+            )
         return self
 
     @property
