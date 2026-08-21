@@ -1,0 +1,119 @@
+name: multi-agent-feature
+version: 1.0.0
+description: >
+  A feature built by specialised agents coordinated through an explicit task graph.
+  Agents never talk to each other: each declares the artifacts it produces and the
+  artifacts it consumes, and the supervisor passes file references between them.
+  After implementation, testing, security audit and documentation run concurrently
+  because they are independent; review waits for all three because it is not.
+tags: [multi-agent, graph]
+
+#     architect
+#         |
+#       coder
+#     ____|________________
+#    |         |           |
+#  tester   security     docs        <- one level, run in parallel
+#    |_________|___________|
+#              |
+#           reviewer
+#              |
+#        approve-final
+
+verifiers:
+  - id: architecture-written
+    kind: artifacts
+    description: The architect actually produced a design
+    expect: [docs/architecture-proposal.md]
+  - id: implementation-written
+    kind: artifacts
+    description: The coder actually produced an implementation note and patch
+    expect: [docs/implementation.patch]
+  - id: reports-written
+    kind: artifacts
+    description: Every reviewing agent produced its report
+    expect: [docs/test-results.json, docs/security-report.json, docs/api-docs.md]
+  - id: review-written
+    kind: artifacts
+    expect: [docs/review.json]
+
+steps:
+  - id: architect
+    name: Architecture
+    agent: architect
+    skills: [planning, architecture]
+    tools: [filesystem]
+    description: Design the change and write the proposal other agents will build from.
+    produces: [docs/architecture-proposal.md]
+    verify: [architecture-written]
+    max_attempts: 2
+
+  - id: coder
+    name: Implementation
+    agent: coder
+    skills: [backend]
+    tools: [filesystem, shell, git]
+    description: Implement the approved design.
+    depends_on: [architect]
+    consumes: [docs/architecture-proposal.md]
+    produces: [docs/implementation.patch]
+    verify: [implementation-written]
+    max_attempts: 3
+
+  # --- these three are independent of each other, so they run concurrently ---
+  - id: tester
+    name: Tests
+    agent: tester
+    skills: [testing]
+    tools: [filesystem, shell]
+    description: Write and run tests against the implementation.
+    depends_on: [coder]
+    consumes: [docs/implementation.patch]
+    produces: [docs/test-results.json]
+    max_attempts: 2
+
+  - id: security
+    name: Security audit
+    agent: security
+    skills: [security]
+    tools: [filesystem, git]
+    description: Audit the change for reachable vulnerabilities.
+    depends_on: [coder]
+    consumes: [docs/implementation.patch]
+    produces: [docs/security-report.json]
+
+  - id: docs
+    name: Documentation
+    agent: docs
+    skills: [requirements]
+    tools: [filesystem]
+    description: Document what the change actually does.
+    depends_on: [coder]
+    consumes: [docs/architecture-proposal.md, docs/implementation.patch]
+    produces: [docs/api-docs.md]
+
+  # --- the join: review sees every report, and only runs if all three produced one ---
+  - id: reviewer
+    name: Review
+    agent: reviewer
+    skills: [debugging, testing]
+    tools: [filesystem, git]
+    description: Judge the change against the tests, the audit and the documentation.
+    depends_on: [tester, security, docs]
+    consumes: [docs/test-results.json, docs/security-report.json, docs/api-docs.md]
+    produces: [docs/review.json]
+    verify: [reports-written]
+
+  - id: verification
+    name: Final verification
+    kind: verify
+    depends_on: [reviewer]
+    verify: [review-written, reports-written]
+    description: Independent checkpoint over every artifact the graph promised.
+
+  - id: approve-final
+    name: Final approval
+    kind: approval
+    gate: final_review
+    depends_on: [verification]
+    description: A human signs off on the completed change.

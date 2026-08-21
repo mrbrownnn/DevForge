@@ -29,3 +29,10 @@ prompt_template: |
   {{skills}}
 skills: [debugging, testing]
 tools: [filesystem, git]
+
+permissions:
+  read: ["**"]
+  write: ["docs/**", "*.json", "*.md"]
+  allow_shell: true
+  shell: ["git diff*", "git log*", "git show*", "git status*"]
+  network: false

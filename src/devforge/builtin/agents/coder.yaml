@@ -33,3 +33,10 @@ repair_template: |
   Fix the underlying defect. Do not weaken, skip, or delete the failing checks.
 skills: [backend, frontend, debugging]
 tools: [filesystem, shell, git]
+
+permissions:
+  read: ["**"]
+  write: ["src/**", "lib/**", "app/**", "tests/**", "*.py", "*.ts", "*.js", "*.md"]
+  allow_shell: true
+  shell: ["python -m pytest*", "ruff check*", "npm test*", "git status*", "git diff*", "git add*"]
+  network: false

@@ -30,3 +30,9 @@ prompt_template: |
   {{skills}}
 skills: [planning, architecture]
 tools: [filesystem]
+
+permissions:
+  read: ["**"]
+  write: ["docs/**", "*.md"]
+  allow_shell: false
+  network: false

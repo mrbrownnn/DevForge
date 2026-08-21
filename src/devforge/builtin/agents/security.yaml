@@ -27,3 +27,10 @@ prompt_template: |
   {{skills}}
 skills: [security]
 tools: [filesystem, git]
+
+permissions:
+  read: ["**"]
+  write: ["docs/**", "*.json", "*.md"]
+  allow_shell: true
+  shell: ["ruff check*", "git diff*", "git log*"]
+  network: false

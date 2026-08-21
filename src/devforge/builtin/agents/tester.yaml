@@ -32,3 +32,10 @@ repair_template: |
   Decide whether the test or the implementation is wrong, then fix that one.
 skills: [testing, debugging]
 tools: [filesystem, shell]
+
+permissions:
+  read: ["**"]
+  write: ["tests/**", "*.md"]
+  allow_shell: true
+  shell: ["python -m pytest*", "npm test*", "go test*", "cargo test*"]
+  network: false
