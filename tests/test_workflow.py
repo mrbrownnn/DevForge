@@ -151,7 +151,31 @@ def test_project_workflow_overrides_builtin(tmp_path: Path) -> None:
 
 def test_index_of_and_step_lookup() -> None:
     spec = WorkflowLoader.for_project(None).load("bugfix")
-    assert spec.index_of("fix") > spec.index_of("reproduce")
+    assert spec.index_of("repair") > spec.index_of("reproduce")
     assert spec.step("missing") is None
     with pytest.raises(KeyError):
         spec.index_of("missing")
+
+
+def test_bugfix_workflow_cannot_pass_by_weakening_the_tests() -> None:
+    """The repair loop is only trustworthy if its exits are all guarded.
+
+    A green suite is the easiest thing in the world to produce dishonestly, so the
+    patch review and the written report are required verifiers, not optional
+    niceties, and the repair step runs them on every attempt.
+    """
+    spec = WorkflowLoader.for_project(None).load("bugfix")
+    verifiers = {v.id: v for v in spec.verifiers}
+
+    assert verifiers["patch-guard"].required
+    assert verifiers["repair-report"].required
+
+    repair = spec.step("repair")
+    assert repair is not None
+    assert "patch-guard" in repair.verify
+    assert repair.max_attempts > 1, "the repair loop must be able to repeat"
+
+    # The step that made the change is not the step that certifies it.
+    checkpoint = spec.step("verification")
+    assert checkpoint is not None and checkpoint.agent is None
+    assert {"tests", "patch-guard", "repair-report"} <= set(checkpoint.verify)

@@ -44,7 +44,7 @@ def gated_ctx(tmp_path: Path, policy: PolicyEngine) -> ToolContext:
 def test_default_registry_contains_expected_tools() -> None:
     registry = ToolRegistry.default()
 
-    assert registry.names() == ["browser", "filesystem", "git", "mcp", "shell"]
+    assert registry.names() == ["browser", "debug", "filesystem", "git", "mcp", "shell"]
     with pytest.raises(RegistryError):
         registry.get("teleporter")
 

@@ -26,6 +26,7 @@ EXPECTED_DOCS = (
     "runtimes.md",
     "security.md",
     "browser.md",
+    "debugging.md",
     "contributing.md",
 )
 
@@ -119,6 +120,24 @@ def test_visual_verification_docs_refuse_to_promise_perfection() -> None:
     assert "UNVERIFIED" in browser
     for threat in ("SSRF", "file://", "Downloads", "injection"):
         assert threat in browser, f"the browser threat table omits {threat}"
+
+
+def test_debugging_docs_state_the_limits_of_the_guard_and_the_benchmark() -> None:
+    """The two claims here are the ones most likely to be over-read.
+
+    A patch guard sounds like a guarantee and a success rate sounds like a
+    prediction. Neither is, and the page has to keep saying so.
+    """
+    debugging = (DOCS / "debugging.md").read_text(encoding="utf-8")
+
+    assert "not a proof of correctness" in debugging
+    assert "not undefeatable" in debugging
+    assert "does not predict performance on real codebases" in debugging
+    assert "not a sandbox" in debugging
+    for category in ("assertion_removed", "test_disabled", "auth_disabled", "policy_weakened"):
+        assert category in debugging, f"the patch guard table omits {category}"
+    for outcome in ("deterministic", "flaky", "not_reproduced"):
+        assert outcome in debugging
 
 
 def test_mcp_security_model_is_documented() -> None:
