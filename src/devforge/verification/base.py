@@ -63,6 +63,7 @@ class VerifierRegistry(Registry[Verifier]):
     def default(cls) -> VerifierRegistry:
         from devforge.verification.artifacts import ArtifactVerifier
         from devforge.verification.command import CommandVerifier
+        from devforge.verification.repair import PatchGuardVerifier, RepairReportVerifier
         from devforge.verification.visual import VisualVerifier
 
         registry = cls()
@@ -73,4 +74,6 @@ class VerifierRegistry(Registry[Verifier]):
             registry.register(kind, command)
         registry.register("artifacts", ArtifactVerifier())
         registry.register("visual", VisualVerifier())
+        registry.register("patch-guard", PatchGuardVerifier())
+        registry.register("repair-report", RepairReportVerifier())
         return registry
