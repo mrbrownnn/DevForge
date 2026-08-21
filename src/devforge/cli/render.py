@@ -12,6 +12,7 @@ import sys
 from typing import Any
 
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -92,7 +93,11 @@ def task_status_text(task: Task) -> Text:
 def render_workflow(spec: WorkflowSpec) -> None:
     console.print(
         Panel(
-            f"[bold]{spec.name}[/bold] v{spec.version}\n{spec.description.strip()}",
+            # Descriptions come from YAML and task text from the command line. Rich
+            # would read `devforge[browser]` as a style tag and silently swallow it,
+            # so anything not written here is escaped.
+            f"[bold]{escape(spec.name)}[/bold] v{escape(spec.version)}\n"
+            f"{escape(spec.description.strip())}",
             title="workflow",
             expand=False,
         )
@@ -134,7 +139,7 @@ def _kind_text(kind: StepKind, gate: str | None) -> str:
 def render_task_summary(task: Task) -> None:
     console.print(
         Panel(
-            f"[bold]{task.description}[/bold]\n"
+            f"[bold]{escape(task.description)}[/bold]\n"
             f"task     {task.task_id}\n"
             f"workflow {task.workflow}\n"
             f"runtime  {task.runtime}\n"
@@ -231,5 +236,9 @@ def render_verification(results: list[VerificationResult], *, show_output: bool 
             if result.status.ok or not result.output_excerpt:
                 continue
             console.print(
-                Panel(result.output_excerpt, title=f"{result.verifier} output", style="red")
+                Panel(
+                    escape(result.output_excerpt),
+                    title=f"{escape(result.verifier)} output",
+                    style="red",
+                )
             )
