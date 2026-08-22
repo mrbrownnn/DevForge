@@ -178,3 +178,13 @@ suppressions:
       findings never republish the value they matched.
     expires: 2027-08-31
     accepted_by: mrbrownnn
+
+  - id: SEC-SECRET-001
+    location: tests/test_vcs.py
+    reason: >
+      A fabricated AWS example key, used to assert that the commit content guard
+      blocks a credential-shaped literal and does not repeat the matched value in
+      its message. The fixture has to contain the shape for the refusal to be
+      testable. File-scoped because line numbers move as tests are added.
+    expires: 2027-08-31
+    accepted_by: mrbrownnn
