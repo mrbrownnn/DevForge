@@ -130,7 +130,7 @@ def test_unknown_workflow_lists_available() -> None:
     loader = WorkflowLoader.for_project(None)
     with pytest.raises(
         WorkflowError,
-        match="Available: bugfix, clone, demo, feature, multi-agent-feature, refactor",
+        match="Available: bugfix, clone, demo, feature, git-feature, multi-agent-feature, refactor",
     ):
         loader.load("nope")
 

@@ -41,3 +41,37 @@ gates:
     description: Promote a change to a production environment.
     blocking: true
     auto_approve: false
+
+  # --- git-native operations ---------------------------------------------------
+  #
+  # Three separate gates on purpose. Approving one branch deletion is not
+  # approving a rebase, and a single "git is fine" gate would make it one.
+
+  git_push:
+    description: Publish a branch to a remote. Reaches other people's machines.
+    blocking: true
+    auto_approve: false
+
+  force_push:
+    description: >
+      Overwrite a remote branch. Discards commits other people may already have
+      pulled, and the discarded commits are not recoverable from the remote.
+    blocking: true
+    auto_approve: false
+
+  branch_delete:
+    description: Delete a branch, locally or on a remote.
+    blocking: true
+    auto_approve: false
+
+  history_rewrite:
+    description: >
+      Rebase, amend, hard reset or filter history. Replaces commits that other
+      work may already refer to.
+    blocking: true
+    auto_approve: false
+
+  worktree_removal:
+    description: Remove a worktree that still holds uncommitted changes.
+    blocking: true
+    auto_approve: false
