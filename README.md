@@ -140,6 +140,7 @@ Full details: [docs/architecture.md](docs/architecture.md).
 | **Git-native flow** | Isolated worktrees, screened commits, PR artifacts, refused history rewrites. | [docs/git.md](docs/git.md) |
 | **Continuous engineering** | Ten detectors, findings with confidence, approval before any work. | [docs/continuous.md](docs/continuous.md) |
 | **Execution platform** | Control plane and untrusted workers, signed protocol, independent re-verification. | [docs/platform.md](docs/platform.md) |
+| **Skill Radar** | Ecosystem sweep, scored on quality and fit with stars capped, security gating. | [docs/skill-radar.md](docs/skill-radar.md) |
 
 ---
 
@@ -198,6 +199,10 @@ Full details: [docs/architecture.md](docs/architecture.md).
 | `devforge platform approve` | Decide a gate a worker paused at |
 | `devforge platform status` | The queue, workers and audit health |
 | `devforge platform audit` | Read the hash-chained audit trail and check it |
+| `devforge skill radar` | Sweep watched sources: NEW, UPDATE, WARNING, DEPRECATE |
+| `devforge skill outdated` | Installed skills a sweep found a newer version of |
+| `devforge skill audit-all` | Re-inspect every installed skill and detect content drift |
+| `devforge skill recommend` | Candidates worth a person's review, best first |
 
 Exit codes: `0` success, `1` failure, `2` paused awaiting approval.
 
@@ -429,6 +434,12 @@ Stated plainly, because a harness that hides its gaps is worse than useless:
   measured workload (9.7 ms to submit, 23 ms to scan a 200-task queue) does not justify
   a broker, a database or a scheduler service. The file-backed queue is safe for one
   control plane, not two. See [docs/platform.md](docs/platform.md).
+- **The Skill Radar does not crawl.** It has no HTTP client, so discovery is bounded
+  by configured sources, operator-supplied feeds and propagation from what is already
+  known - and every report lists what it could not consult. A score reads a
+  repository's shape, not what its instructions will make a model do, so `INSTALL`
+  means "worth a person's review", never "safe". Nothing is installed automatically.
+  See [docs/skill-radar.md](docs/skill-radar.md).
 - **One real runtime adapter.** Claude Code. Codex/OpenCode adapters are interface
   work, not present.
 - **Agent tool calls are proxied only for runtimes that delegate.** A runtime given a

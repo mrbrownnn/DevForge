@@ -31,6 +31,7 @@ EXPECTED_DOCS = (
     "git.md",
     "continuous.md",
     "platform.md",
+    "skill-radar.md",
     "contributing.md",
 )
 
