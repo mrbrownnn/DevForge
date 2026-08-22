@@ -198,3 +198,14 @@ suppressions:
       anything. File-scoped because line numbers move as tests are added.
     expires: 2027-08-31
     accepted_by: mrbrownnn
+
+  - id: SEC-SECRET-001
+    location: tests/test_platform.py
+    reason: >
+      A fabricated key used to assert that audit-trail details are redacted
+      before they are written. The fixture has to look like a credential for the
+      assertion to mean anything, and the scanner redacted it in its own
+      evidence, which is the behaviour under test. File-scoped because line
+      numbers move as tests are added.
+    expires: 2027-08-31
+    accepted_by: mrbrownnn
