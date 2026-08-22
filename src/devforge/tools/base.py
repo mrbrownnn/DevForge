@@ -155,6 +155,7 @@ class ToolRegistry(Registry[Tool]):
         from devforge.tools.filesystem import FilesystemTool
         from devforge.tools.git import GitTool
         from devforge.tools.shell import ShellTool
+        from devforge.tools.vcs import VcsTool
 
         registry = cls()
         for tool in (
@@ -163,6 +164,7 @@ class ToolRegistry(Registry[Tool]):
             GitTool(),
             BrowserTool(),
             DebugTool(),
+            VcsTool(),
             McpTool(),
         ):
             registry.register(tool.name, tool)
