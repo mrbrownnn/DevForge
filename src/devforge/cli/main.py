@@ -19,6 +19,7 @@ import typer
 from devforge import __version__
 from devforge.cli import (
     context_commands,
+    continuous_commands,
     eval_commands,
     git_commands,
     render,
@@ -710,6 +711,7 @@ app.add_typer(skill_commands.skill_app, name="skill")
 app.add_typer(security_commands.app, name="security")
 app.add_typer(eval_commands.app, name="eval")
 app.add_typer(git_commands.app, name="git")
+app.add_typer(continuous_commands.app, name="continuous")
 # Codebase intelligence: build the map, inspect what an agent will be given.
 app.command("index")(context_commands.index_command)
 app.command("context")(context_commands.context_command)

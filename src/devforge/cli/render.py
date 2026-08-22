@@ -546,3 +546,102 @@ def render_commit_plan(plan) -> None:
             f"[bold red]{len(plan.blocking_flags)} blocking flag(s)[/bold red] - "
             "this commit will not be recorded"
         )
+
+
+CE_SEVERITY_STYLE = {
+    "critical": "bold red",
+    "high": "red",
+    "medium": "yellow",
+    "low": "cyan",
+    "info": "dim",
+}
+
+CE_STATE_STYLE = {
+    "proposed": "cyan",
+    "approved": "green",
+    "rejected": "dim",
+    "executing": "yellow",
+    "verified": "bold green",
+    "failed": "red",
+}
+
+
+def render_findings(report) -> None:
+    """Findings by priority, then what could not be looked at.
+
+    Unavailable detectors print even when there are no findings. "Nothing found"
+    and "could not look" are different statements, and a reader who sees only the
+    first will believe the second.
+    """
+    findings = report.by_priority()
+    if findings:
+        table = Table("id", "sev", "conf", "risk", "where", "what", box=None)
+        for finding in findings:
+            style = CE_SEVERITY_STYLE.get(finding.severity.value, "")
+            where = finding.affected_files[0] if finding.affected_files else "-"
+            table.add_row(
+                escape(finding.finding_id),
+                f"[{style}]{finding.severity.value}[/]",
+                f"{finding.confidence:.0%}",
+                finding.estimated_risk.value,
+                escape(where[-42:]),
+                escape(finding.title[:62]),
+            )
+        console.print(table)
+    else:
+        console.print("[green]no findings above the confidence threshold[/green]")
+
+    for unavailable in report.unavailable:
+        console.print(
+            f"  [magenta]unavailable[/magenta] {unavailable.detector}: "
+            f"{escape(unavailable.detail)}"
+        )
+
+    parts = [f"{len(findings)} finding(s)"]
+    if report.withheld:
+        parts.append(f"{report.withheld} withheld as low confidence")
+    if report.suppressed:
+        parts.append(f"{len(report.suppressed)} accepted previously")
+    console.print(f"[dim]{'; '.join(parts)}[/dim]")
+    console.print(
+        "[dim]Static analysis. Confirm each finding before acting on it - a detector "
+        "that was wrong is a normal outcome.[/dim]"
+    )
+
+
+def render_proposals(proposals, *, title: str, counts: dict | None = None) -> None:
+    if not proposals:
+        console.print(f"[dim]no {title} proposals[/dim]")
+    else:
+        table = Table("id", "state", "sev", "n", "workflow", "title", box=None)
+        for proposal in proposals:
+            state = CE_STATE_STYLE.get(proposal.state.value, "")
+            severity = CE_SEVERITY_STYLE.get(proposal.severity.value, "")
+            table.add_row(
+                escape(proposal.proposal_id),
+                f"[{state}]{proposal.state.value}[/]",
+                f"[{severity}]{proposal.severity.value}[/]",
+                str(len(proposal.findings)),
+                proposal.workflow,
+                escape(proposal.title[:58]),
+            )
+        console.print(table)
+    if counts:
+        console.print(f"[dim]{counts}[/dim]")
+
+
+def render_continuous_verification(result) -> None:
+    for key in result.resolved:
+        console.print(f"  [green]resolved[/green] {escape(key)}")
+    for key in result.remaining:
+        console.print(f"  [red]still firing[/red] {escape(key)}")
+    for key in result.unverifiable:
+        console.print(f"  [magenta]unverifiable[/magenta] {escape(key)}")
+
+    if result.complete:
+        console.print("[green]every finding this proposal was about has stopped firing[/green]")
+    else:
+        console.print(
+            "[red]not complete[/red] - a finding that still fires means the work is "
+            "not done, whatever the workflow reported"
+        )
