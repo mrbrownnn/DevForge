@@ -139,6 +139,7 @@ Full details: [docs/architecture.md](docs/architecture.md).
 | **Evaluation** | Benchmark cases with known answers, twelve metrics, a calibrated grader. | [docs/evaluation.md](docs/evaluation.md) |
 | **Git-native flow** | Isolated worktrees, screened commits, PR artifacts, refused history rewrites. | [docs/git.md](docs/git.md) |
 | **Continuous engineering** | Ten detectors, findings with confidence, approval before any work. | [docs/continuous.md](docs/continuous.md) |
+| **Execution platform** | Control plane and untrusted workers, signed protocol, independent re-verification. | [docs/platform.md](docs/platform.md) |
 
 ---
 
@@ -191,6 +192,12 @@ Full details: [docs/architecture.md](docs/architecture.md).
 | `devforge continuous approve` | Agree that a proposal is worth doing |
 | `devforge continuous execute` | Prepare an approved proposal in an isolated worktree |
 | `devforge continuous verify` | Re-detect and check the findings stopped firing |
+| `devforge platform worker` | Register, list and revoke execution workers |
+| `devforge platform submit` | Queue a task for a worker |
+| `devforge platform dispatch` | Lease, execute and independently verify a task |
+| `devforge platform approve` | Decide a gate a worker paused at |
+| `devforge platform status` | The queue, workers and audit health |
+| `devforge platform audit` | Read the hash-chained audit trail and check it |
 
 Exit codes: `0` success, `1` failure, `2` paused awaiting approval.
 
@@ -416,6 +423,12 @@ Stated plainly, because a harness that hides its gaps is worse than useless:
   Every detector is static: nothing is executed or profiled, so a finding is a
   hypothesis to confirm rather than a defect that was proven. See
   [docs/continuous.md](docs/continuous.md).
+- **Workers are separate processes, not separate machines.** The platform splits a
+  control plane from workers over a signed stdio protocol, and there is deliberately
+  no network transport: an architecture test forbids importing an HTTP client, and the
+  measured workload (9.7 ms to submit, 23 ms to scan a 200-task queue) does not justify
+  a broker, a database or a scheduler service. The file-backed queue is safe for one
+  control plane, not two. See [docs/platform.md](docs/platform.md).
 - **One real runtime adapter.** Claude Code. Codex/OpenCode adapters are interface
   work, not present.
 - **Agent tool calls are proxied only for runtimes that delegate.** A runtime given a
