@@ -188,3 +188,13 @@ suppressions:
       testable. File-scoped because line numbers move as tests are added.
     expires: 2027-08-31
     accepted_by: mrbrownnn
+
+  - id: SEC-CODE-002
+    location: tests/test_continuous.py
+    reason: >
+      A deliberate os.system fixture, used to assert that the continuous-engineering
+      security detector reuses the Security Center's scanner rather than
+      reimplementing it. The construct has to exist for the assertion to mean
+      anything. File-scoped because line numbers move as tests are added.
+    expires: 2027-08-31
+    accepted_by: mrbrownnn
