@@ -1,0 +1,8 @@
+# Security advisories somebody read elsewhere and wrote down here.
+#
+# DevForge queries no advisory feed: that would be a network call, a new trust
+# relationship and a new egress path. This file is the local record, and an empty
+# one means "nothing recorded", never "nothing exists" - which is what the radar
+# reports.
+version: 1
+advisories: []

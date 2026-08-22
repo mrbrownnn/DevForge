@@ -1,0 +1,37 @@
+# What the Skill Radar watches for this repository.
+#
+# DevForge cannot search GitHub - it imports no HTTP client, by architecture rule
+# and by threat model - so this file plus radar/feeds/ is the whole of the
+# radar's reach. That is a real limit, and every report states it.
+#
+# Adding a source here does not fetch it. It records that somebody decided it was
+# worth attention, so that a feed mentioning it can be recognised rather than
+# arriving unexplained.
+version: 1
+
+watch:
+  - kind: org
+    name: anthropics
+    reason: Publishes the skill format DevForge consumes.
+  - kind: topic
+    name: agent-skills
+    reason: The topic new skill repositories tag themselves with.
+  - kind: topic
+    name: mcp-server
+    reason: MCP servers are a supply-chain surface DevForge already models.
+  - kind: repo
+    name: modelcontextprotocol/servers
+    reason: Reference MCP servers; changes here move the ecosystem.
+
+# What this project would actually adopt. Drives the usefulness half of the fit
+# score: a well-made skill covering none of these is still a poor adoption, and
+# saying so is the point of scoring fit separately from quality.
+wanted_capabilities:
+  - browser-testing
+  - security-review
+  - api-design
+  - performance-analysis
+  - accessibility-audit
+
+install_threshold: 75
+review_threshold: 55

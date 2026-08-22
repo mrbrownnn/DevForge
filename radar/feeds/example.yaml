@@ -1,0 +1,37 @@
+# An example feed, and the format any feed uses.
+#
+# Real feeds are exported by an operator - from a GitHub search, a newsletter, a
+# colleague's list. This one exists so the format is documented by something that
+# parses, and so the radar has something to demonstrate on.
+version: 1
+generated_at: 2026-08-22T00:00:00Z
+source: hand-written example; not a real survey
+
+entries:
+  - name: example-browser-testing
+    repository: example-org/browser-testing-skill
+    version: "1.2.0"
+    description: Drives a browser to test a running application.
+    license: MIT
+    capabilities: [browser-testing]
+    stars: 1200
+    last_commit: 2026-08-01T00:00:00Z
+    related:
+      - example-org/browser-testing-skill-fork
+
+  - name: example-unlicensed
+    repository: example-org/unlicensed-helper
+    version: "0.3.0"
+    description: Useful-looking helper with no licence file.
+    capabilities: [api-design]
+    stars: 40000
+    last_commit: 2026-08-15T00:00:00Z
+
+  - name: example-abandoned
+    repository: example-org/abandoned-skill
+    version: "0.1.0"
+    description: Last touched years ago.
+    license: MIT
+    capabilities: [security-review]
+    archived: true
+    last_commit: 2023-01-01T00:00:00Z
