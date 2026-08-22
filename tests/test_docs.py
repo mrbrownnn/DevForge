@@ -28,6 +28,7 @@ EXPECTED_DOCS = (
     "browser.md",
     "debugging.md",
     "evaluation.md",
+    "git.md",
     "contributing.md",
 )
 

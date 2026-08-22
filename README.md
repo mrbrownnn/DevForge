@@ -137,6 +137,7 @@ Full details: [docs/architecture.md](docs/architecture.md).
 | **Patch guard** | Reads a repair's diff for the ways it can cheat. | [docs/debugging.md](docs/debugging.md) |
 | **Security Center** | Threat model, posture audit, workspace scan, SBOM. | [docs/security/security-center.md](docs/security/security-center.md) |
 | **Evaluation** | Benchmark cases with known answers, twelve metrics, a calibrated grader. | [docs/evaluation.md](docs/evaluation.md) |
+| **Git-native flow** | Isolated worktrees, screened commits, PR artifacts, refused history rewrites. | [docs/git.md](docs/git.md) |
 
 ---
 
@@ -179,6 +180,10 @@ Full details: [docs/architecture.md](docs/architecture.md).
 | `devforge eval report` | Render a saved evaluation report as Markdown |
 | `devforge eval cases` | The benchmark cases that apply here |
 | `devforge eval configs` | The evaluation configurations that apply here |
+| `devforge git worktree` | Create, list and remove isolated worktrees |
+| `devforge git commit` | Plan a commit, screen its contents, then record it |
+| `devforge git pr` | Write the pull-request artifact (does not push) |
+| `devforge git guard` | Say what would happen to a git command, without running it |
 
 Exit codes: `0` success, `1` failure, `2` paused awaiting approval.
 
@@ -393,6 +398,11 @@ Stated plainly, because a harness that hides its gaps is worse than useless:
   too coarse to separate a real improvement from run-to-run variation. `eval compare`
   therefore reports directions and refuses to declare a winner. See
   [docs/evaluation.md](docs/evaluation.md).
+- **DevForge never pushes and never opens a pull request.** `devforge git pr` writes
+  an artifact to a file; a person pushes the branch. Force push, branch deletion and
+  history rewriting are refused outright rather than gated, and the commit content
+  guard is pattern matching - it finds credential-shaped strings and known credential
+  filenames, not a secret that reads like prose. See [docs/git.md](docs/git.md).
 - **One real runtime adapter.** Claude Code. Codex/OpenCode adapters are interface
   work, not present.
 - **Agent tool calls are proxied only for runtimes that delegate.** A runtime given a

@@ -62,6 +62,21 @@ It holds no network permission and no delete permission. Its "changed files" sec
 comes from `git`, not from what the patch claims to have touched - the report is only
 worth having if a reviewer can trust it. See [debugging.md](debugging.md).
 
+### vcs
+
+Actions: `worktree`, `worktrees`, `status`, `plan_commit`, `commit`, `pull_request`.
+
+Where `git` is a thin wrapper over the binary, this one exposes operations with rules
+attached. `commit` screens what it is about to record - credential files (never
+opened), credential-shaped literals, unexplained binaries - and refuses rather than
+offering an approval, because offering one for a secret teaches people to use it.
+`pull_request` writes a file; nothing here reaches a network.
+
+It refuses to commit unless it is running inside a linked worktree, so an agent cannot
+land work on the branch the user is standing on. `push`, branch deletion and history
+rewriting are **absent from the action list** rather than gated within it, so no
+parameter combination reaches them. See [git.md](git.md).
+
 ## Browser and MCP
 
 Both are implemented as of Phase 2. Availability is still *discovered*, never assumed:
