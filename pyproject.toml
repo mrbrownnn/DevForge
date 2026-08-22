@@ -40,12 +40,19 @@ where = ["src"]
     "templates/*.md",
     "skills/*/SKILL.md",
     "benchmarks/*.yaml",
+    "benchmarks/eval/*.yaml",
+    "evals/*.yaml",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 filterwarnings = ["ignore::DeprecationWarning"]
+markers = [
+    # Evaluation cases spawn pytest in a temporary workspace, so these run in
+    # seconds rather than milliseconds. Deselect with: -m "not slow"
+    "slow: runs a real subprocess and takes seconds",
+]
 
 [tool.ruff]
 line-length = 100

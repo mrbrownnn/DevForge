@@ -1,0 +1,164 @@
+# Security remediation.
+#
+# Two checks, because either alone is gameable. The behavioural tests prove the
+# attack no longer works; the structural test proves the dangerous construct is
+# gone rather than merely guarded by a blocklist that the next input will slip
+# past. A fix that passes both has changed the shape of the code, not just the
+# symptom.
+version: 1
+name: security
+description: Remove a vulnerability without removing the feature.
+
+cases:
+  - id: security-injection-and-traversal
+    category: security
+    title: Fix SQL injection and path traversal
+    description: >
+      app/store.py builds a SQL query by string interpolation and joins a
+      user-supplied filename onto a base directory without confining it. Fix both
+      using parameterised queries and a resolved-path containment check.
+      find_user() and read_note() must keep working for legitimate input -
+      tests/test_existing.py pins that - and tests/test_security.py states what
+      must stop working.
+    workflow: bugfix
+    tags: [injection, traversal]
+    files:
+      app/__init__.py: ""
+      app/store.py: |
+        """A tiny store. Both of its lookups are unsafe."""
+
+        import pathlib
+        import sqlite3
+
+        BASE = pathlib.Path("data")
+
+
+        def connect() -> sqlite3.Connection:
+            connection = sqlite3.connect(":memory:")
+            connection.execute("create table users (name text, email text)")
+            connection.executemany(
+                "insert into users values (?, ?)",
+                [("ada", "ada@example.test"), ("alan", "alan@example.test")],
+            )
+            return connection
+
+
+        def find_user(connection: sqlite3.Connection, name: str) -> list[tuple]:
+            """Look up a user's email by name."""
+            return connection.execute(
+                f"select email from users where name = '{name}'"
+            ).fetchall()
+
+
+        def read_note(name: str) -> str:
+            """Read a note from the data directory."""
+            return (BASE / name).read_text(encoding="utf-8")
+      data/note.txt: |
+        Buy more chisels.
+      secret.txt: |
+        deployment key lives here
+      tests/test_existing.py: |
+        from app.store import connect, find_user, read_note
+
+
+        def test_a_normal_lookup_still_works():
+            connection = connect()
+            assert find_user(connection, "ada") == [("ada@example.test",)]
+
+
+        def test_a_normal_note_still_reads():
+            assert "chisels" in read_note("note.txt")
+      tests/test_security.py: |
+        """What must stop working."""
+
+        import ast
+        import pathlib
+
+        import pytest
+
+        from app.store import connect, find_user, read_note
+
+
+        def test_injected_sql_matches_no_one():
+            connection = connect()
+            assert find_user(connection, "ada' or '1'='1") == []
+
+
+        def test_injected_sql_cannot_end_the_statement():
+            connection = connect()
+            find_user(connection, "ada'; drop table users; --")
+            assert find_user(connection, "alan") == [("alan@example.test",)]
+
+
+        def test_traversal_out_of_the_data_directory_is_refused():
+            with pytest.raises(ValueError):
+                read_note("../secret.txt")
+
+
+        def test_absolute_paths_are_refused():
+            with pytest.raises(ValueError):
+                read_note("/etc/passwd")
+
+
+        def test_no_query_is_built_by_interpolation():
+            tree = ast.parse(pathlib.Path("app/store.py").read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                target = getattr(node.func, "attr", "")
+                if target not in {"execute", "executemany", "executescript"}:
+                    continue
+                for argument in node.args:
+                    assert not isinstance(argument, ast.JoinedStr), (
+                        "a query is still built by f-string interpolation"
+                    )
+    solution:
+      app/store.py: |
+        """A tiny store. Both of its lookups are confined."""
+
+        import pathlib
+        import sqlite3
+
+        BASE = pathlib.Path("data")
+
+
+        def connect() -> sqlite3.Connection:
+            connection = sqlite3.connect(":memory:")
+            connection.execute("create table users (name text, email text)")
+            connection.executemany(
+                "insert into users values (?, ?)",
+                [("ada", "ada@example.test"), ("alan", "alan@example.test")],
+            )
+            return connection
+
+
+        def find_user(connection: sqlite3.Connection, name: str) -> list[tuple]:
+            """Look up a user's email by name.
+
+            The name is bound as a parameter, so it is data to SQLite and can never
+            be read as syntax however it is spelled.
+            """
+            return connection.execute(
+                "select email from users where name = ?", (name,)
+            ).fetchall()
+
+
+        def read_note(name: str) -> str:
+            """Read a note from the data directory.
+
+            Containment is decided after resolution, because ``..`` and symlinks
+            are only visible once the path is resolved. A prefix check on the raw
+            string would accept ``data/../secret.txt``.
+            """
+            base = BASE.resolve()
+            target = (base / name).resolve()
+            if target != base and base not in target.parents:
+                raise ValueError(f"note path escapes the data directory: {name}")
+            return target.read_text(encoding="utf-8")
+    guards:
+      - id: legitimate-use
+        description: The feature must survive its fix
+        argv: [python, -m, pytest, -q, tests/test_existing.py]
+    checks:
+      - id: suite
+        argv: [python, -m, pytest, -q]

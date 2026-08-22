@@ -1,0 +1,128 @@
+# Frontend.
+#
+# Graded on the markup, parsed rather than pattern-matched. A regex over HTML
+# would pass a page that merely mentions the right words; parsing asks whether the
+# structure is there. It still says nothing about how the page looks - that is the
+# visual verifier's job, and it needs a browser.
+version: 1
+name: frontend
+description: Produce markup with the structure the requirement names.
+
+cases:
+  - id: frontend-accessible-form
+    category: frontend
+    title: Build a labelled signup form
+    description: >
+      Write web/index.html - a signup page with a responsive viewport meta tag, a
+      single h1, a nav containing exactly three links, and a form whose email and
+      password inputs each have a label bound by its `for` attribute. The existing
+      stylesheet at web/style.css must stay untouched. tests/test_markup.py states
+      the requirement precisely.
+    workflow: feature
+    tags: [html, accessibility]
+    files:
+      web/style.css: |
+        body { font-family: system-ui, sans-serif; margin: 0 auto; max-width: 40rem; }
+      tests/test_existing.py: |
+        import pathlib
+
+
+        def test_the_stylesheet_is_unchanged():
+            css = pathlib.Path("web/style.css").read_text(encoding="utf-8")
+            assert "max-width: 40rem" in css
+      tests/test_markup.py: |
+        """Structural requirements, checked with the standard-library parser."""
+
+        import pathlib
+        from html.parser import HTMLParser
+
+        import pytest
+
+
+        class Collector(HTMLParser):
+            def __init__(self) -> None:
+                super().__init__()
+                self.tags: list[tuple[str, dict]] = []
+
+            def handle_starttag(self, tag, attrs):
+                self.tags.append((tag, dict(attrs)))
+
+
+        @pytest.fixture(scope="module")
+        def page():
+            path = pathlib.Path("web/index.html")
+            assert path.is_file(), "web/index.html does not exist"
+            collector = Collector()
+            collector.feed(path.read_text(encoding="utf-8"))
+            return collector.tags
+
+
+        def tags_named(page, name):
+            return [attrs for tag, attrs in page if tag == name]
+
+
+        def test_declares_a_responsive_viewport(page):
+            viewports = [
+                attrs for attrs in tags_named(page, "meta")
+                if attrs.get("name") == "viewport"
+            ]
+            assert viewports, "no viewport meta tag"
+            assert "width=device-width" in viewports[0].get("content", "")
+
+
+        def test_has_exactly_one_h1(page):
+            assert len(tags_named(page, "h1")) == 1
+
+
+        def test_navigation_has_three_links(page):
+            assert len(tags_named(page, "nav")) == 1
+            assert len(tags_named(page, "a")) == 3
+
+
+        def test_every_input_has_a_bound_label(page):
+            inputs = [attrs for attrs in tags_named(page, "input") if attrs.get("type") != "submit"]
+            ids = {attrs.get("id") for attrs in inputs}
+            assert ids == {"email", "password"}, f"expected email and password inputs, got {ids}"
+            bound = {attrs.get("for") for attrs in tags_named(page, "label")}
+            assert ids <= bound, f"inputs without a label: {ids - bound}"
+
+
+        def test_links_the_existing_stylesheet(page):
+            hrefs = {attrs.get("href") for attrs in tags_named(page, "link")}
+            assert "style.css" in hrefs
+    solution:
+      web/index.html: |
+        <!doctype html>
+        <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Sign up</title>
+            <link rel="stylesheet" href="style.css">
+          </head>
+          <body>
+            <nav>
+              <a href="/">Home</a>
+              <a href="/pricing">Pricing</a>
+              <a href="/docs">Docs</a>
+            </nav>
+            <main>
+              <h1>Create your account</h1>
+              <form method="post" action="/signup">
+                <label for="email">Email address</label>
+                <input id="email" name="email" type="email" required>
+
+                <label for="password">Password</label>
+                <input id="password" name="password" type="password" required>
+
+                <input type="submit" value="Sign up">
+              </form>
+            </main>
+          </body>
+        </html>
+    guards:
+      - id: stylesheet-untouched
+        argv: [python, -m, pytest, -q, tests/test_existing.py]
+    checks:
+      - id: suite
+        argv: [python, -m, pytest, -q]

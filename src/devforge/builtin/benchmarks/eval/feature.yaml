@@ -1,0 +1,187 @@
+# Feature implementation.
+#
+# The requirement arrives as a failing test the case ships, and a guard test that
+# already passes. That shape is deliberate: it makes "did it work" a command
+# rather than a judgement, and it makes "did it break something else" measurable
+# on the same run.
+version: 1
+name: feature
+description: Build something that is not there yet, without breaking what is.
+
+cases:
+  - id: feature-slugify
+    category: feature
+    title: Implement slugify
+    description: >
+      Implement slugify() in app/text.py so that it lowercases the input, replaces
+      every run of non-alphanumeric characters with a single hyphen, and strips
+      leading and trailing hyphens. tests/test_slugify.py states the requirement.
+      Do not change the existing titleize() behaviour.
+    workflow: feature
+    tags: [strings, pure-function]
+    files:
+      app/__init__.py: ""
+      app/text.py: |
+        """Text helpers."""
+
+
+        def titleize(value: str) -> str:
+            """Capitalise each word. Already implemented; leave it alone."""
+            return " ".join(word.capitalize() for word in value.split())
+
+
+        def slugify(value: str) -> str:
+            """Turn a title into a URL slug."""
+            raise NotImplementedError("slugify is not implemented yet")
+      tests/test_existing.py: |
+        from app.text import titleize
+
+
+        def test_titleize_capitalises_each_word():
+            assert titleize("hello wide world") == "Hello Wide World"
+
+
+        def test_titleize_collapses_whitespace():
+            assert titleize("  spaced   out  ") == "Spaced Out"
+      tests/test_slugify.py: |
+        from app.text import slugify
+
+
+        def test_lowercases_and_hyphenates():
+            assert slugify("Hello Wide World") == "hello-wide-world"
+
+
+        def test_collapses_runs_of_punctuation():
+            assert slugify("Hello --- World!!!") == "hello-world"
+
+
+        def test_strips_leading_and_trailing_separators():
+            assert slugify("  ...Edges...  ") == "edges"
+
+
+        def test_keeps_digits():
+            assert slugify("Top 10 Films") == "top-10-films"
+    solution:
+      app/text.py: |
+        """Text helpers."""
+
+        import re
+
+        _SEPARATORS = re.compile(r"[^a-z0-9]+")
+
+
+        def titleize(value: str) -> str:
+            """Capitalise each word. Already implemented; leave it alone."""
+            return " ".join(word.capitalize() for word in value.split())
+
+
+        def slugify(value: str) -> str:
+            """Turn a title into a URL slug."""
+            return _SEPARATORS.sub("-", value.lower()).strip("-")
+    guards:
+      - id: existing-behaviour
+        description: titleize must keep working
+        argv: [python, -m, pytest, -q, tests/test_existing.py]
+    checks:
+      - id: suite
+        description: The whole suite, including the new requirement
+        argv: [python, -m, pytest, -q]
+
+  - id: feature-retry-budget
+    category: feature
+    title: Bound a retry loop
+    description: >
+      Add a max_attempts argument to retry() in app/net.py so that a call is tried
+      at most that many times and the last error is raised when the budget runs
+      out. tests/test_retry.py states the requirement. The single-attempt
+      behaviour that tests/test_existing.py covers must not change.
+    workflow: feature
+    tags: [control-flow]
+    files:
+      app/__init__.py: ""
+      app/net.py: |
+        """A tiny retry helper."""
+
+
+        class Attempt:
+            """Records how many times the callable was invoked."""
+
+            def __init__(self) -> None:
+                self.calls = 0
+
+
+        def retry(operation, attempt: Attempt | None = None):
+            """Call `operation` once and return its result."""
+            if attempt is not None:
+                attempt.calls += 1
+            return operation()
+      tests/test_existing.py: |
+        from app.net import Attempt, retry
+
+
+        def test_a_successful_call_runs_once():
+            record = Attempt()
+            assert retry(lambda: "ok", record) == "ok"
+            assert record.calls == 1
+      tests/test_retry.py: |
+        import pytest
+
+        from app.net import Attempt, retry
+
+
+        def test_retries_until_it_succeeds():
+            record = Attempt()
+            calls = {"n": 0}
+
+            def flaky():
+                calls["n"] += 1
+                if calls["n"] < 3:
+                    raise ValueError("not yet")
+                return "ok"
+
+            assert retry(flaky, record, max_attempts=5) == "ok"
+            assert record.calls == 3
+
+
+        def test_raises_the_last_error_when_the_budget_runs_out():
+            record = Attempt()
+
+            def always_fails():
+                raise ValueError("nope")
+
+            with pytest.raises(ValueError):
+                retry(always_fails, record, max_attempts=2)
+            assert record.calls == 2
+    solution:
+      app/net.py: |
+        """A tiny retry helper."""
+
+
+        class Attempt:
+            """Records how many times the callable was invoked."""
+
+            def __init__(self) -> None:
+                self.calls = 0
+
+
+        def retry(operation, attempt: Attempt | None = None, max_attempts: int = 1):
+            """Call `operation` up to `max_attempts` times, raising the last error."""
+            if max_attempts < 1:
+                raise ValueError("max_attempts must be at least 1")
+            last: Exception | None = None
+            for _ in range(max_attempts):
+                if attempt is not None:
+                    attempt.calls += 1
+                try:
+                    return operation()
+                except Exception as exc:  # the caller's error, re-raised below
+                    last = exc
+            if last is None:
+                raise RuntimeError("retry made no attempts")
+            raise last
+    guards:
+      - id: existing-behaviour
+        argv: [python, -m, pytest, -q, tests/test_existing.py]
+    checks:
+      - id: suite
+        argv: [python, -m, pytest, -q]

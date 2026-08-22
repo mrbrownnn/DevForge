@@ -1,0 +1,164 @@
+# Website reproduction.
+#
+# This category requires a browser. Without Playwright installed the case is
+# reported as *unavailable* and excluded from every rate's denominator, with the
+# reason printed. That is the honest outcome: a capability that is absent has not
+# been measured, and scoring it zero would blame the configuration for the
+# environment.
+#
+# What is graded is structural correspondence, not appearance. Pixel comparison
+# needs the visual verifier and its optional dependencies; a structural diff is
+# what can be checked with the standard library, and claiming more than it shows
+# would be the exact overclaim the clone workflow refuses to make.
+version: 1
+name: website
+description: Reproduce a page's structure from the page itself.
+
+cases:
+  - id: website-structure-match
+    category: website
+    title: Reproduce a static page
+    description: >
+      reference/index.html is the page to reproduce. Write clone/index.html so that
+      its element skeleton and visible text match the reference: the same headings
+      in the same order, the same number of cards, the same navigation links.
+      tests/test_clone.py compares the two documents. Do not edit anything under
+      reference/.
+    workflow: clone
+    requires: [browser]
+    tags: [clone, structure]
+    files:
+      reference/index.html: |
+        <!doctype html>
+        <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <title>Northwind Tools</title>
+          </head>
+          <body>
+            <nav>
+              <a href="/">Home</a>
+              <a href="/tools">Tools</a>
+            </nav>
+            <h1>Northwind Tools</h1>
+            <p>Hand tools for people who finish things.</p>
+            <section class="cards">
+              <article class="card">
+                <h2>Chisels</h2>
+                <p>Bevel-edged, ground flat.</p>
+              </article>
+              <article class="card">
+                <h2>Planes</h2>
+                <p>Block and jack, both tuned.</p>
+              </article>
+              <article class="card">
+                <h2>Saws</h2>
+                <p>Rip and crosscut.</p>
+              </article>
+            </section>
+            <footer>
+              <p>Made in Sheffield.</p>
+            </footer>
+          </body>
+        </html>
+      tests/test_existing.py: |
+        import pathlib
+
+
+        def test_the_reference_is_untouched():
+            html = pathlib.Path("reference/index.html").read_text(encoding="utf-8")
+            assert "Made in Sheffield." in html
+            assert html.count("<article") == 3
+      tests/test_clone.py: |
+        """Structural correspondence between the reference and the reproduction.
+
+        This compares skeletons and text. It does not compare rendering, layout,
+        spacing or colour - none of which the standard library can see - so a pass
+        here means "the same document structure", never "looks the same".
+        """
+
+        import pathlib
+        from html.parser import HTMLParser
+
+        import pytest
+
+        SKIP_TAGS = {"meta", "link", "br", "hr"}
+
+
+        class Skeleton(HTMLParser):
+            def __init__(self) -> None:
+                super().__init__()
+                self.tags: list[str] = []
+                self.text: list[str] = []
+
+            def handle_starttag(self, tag, attrs):
+                if tag not in SKIP_TAGS:
+                    self.tags.append(tag)
+
+            def handle_data(self, data):
+                stripped = " ".join(data.split())
+                if stripped:
+                    self.text.append(stripped)
+
+
+        def parse(relative: str) -> Skeleton:
+            path = pathlib.Path(relative)
+            assert path.is_file(), f"{relative} does not exist"
+            skeleton = Skeleton()
+            skeleton.feed(path.read_text(encoding="utf-8"))
+            return skeleton
+
+
+        @pytest.fixture(scope="module")
+        def pair():
+            return parse("reference/index.html"), parse("clone/index.html")
+
+
+        def test_the_element_skeleton_matches(pair):
+            reference, clone = pair
+            assert clone.tags == reference.tags
+
+
+        def test_the_visible_text_matches(pair):
+            reference, clone = pair
+            assert clone.text == reference.text
+    solution:
+      clone/index.html: |
+        <!doctype html>
+        <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <title>Northwind Tools</title>
+          </head>
+          <body>
+            <nav>
+              <a href="/">Home</a>
+              <a href="/tools">Tools</a>
+            </nav>
+            <h1>Northwind Tools</h1>
+            <p>Hand tools for people who finish things.</p>
+            <section class="cards">
+              <article class="card">
+                <h2>Chisels</h2>
+                <p>Bevel-edged, ground flat.</p>
+              </article>
+              <article class="card">
+                <h2>Planes</h2>
+                <p>Block and jack, both tuned.</p>
+              </article>
+              <article class="card">
+                <h2>Saws</h2>
+                <p>Rip and crosscut.</p>
+              </article>
+            </section>
+            <footer>
+              <p>Made in Sheffield.</p>
+            </footer>
+          </body>
+        </html>
+    guards:
+      - id: reference-untouched
+        argv: [python, -m, pytest, -q, tests/test_existing.py]
+    checks:
+      - id: suite
+        argv: [python, -m, pytest, -q]

@@ -1,0 +1,65 @@
+# Evaluation configurations.
+#
+# Three of these are calibration anchors, not candidates. `reference` must score
+# 1.0 and `cheat` and `none` must score 0.0; a suite where that stops holding has
+# a broken grader, and every other number it produces is unreadable until it is
+# fixed. `tests/test_eval.py` asserts all three, so the calibration is a build
+# failure rather than a habit.
+#
+# A project adds its own by dropping a file in `evals/`. Ids collide by design:
+# a project file redefining `mock-baseline` replaces it.
+version: 1
+
+configs:
+  - id: reference
+    description: Applies each case's known-good solution. The grader's upper anchor.
+    driver: reference
+    notes: >
+      Not a measurement of DevForge. It measures the grader: a case the reference
+      solution cannot pass is a case whose checks are wrong.
+
+  - id: cheat
+    description: Deletes the assertions until the checks stop objecting. Must score 0.
+    driver: cheat
+    notes: >
+      The adversarial control. A benchmark that scores this above zero rewards
+      weakening tests, which is the cheapest way to make any suite green.
+
+  - id: none
+    description: Changes nothing. The floor a real score has to clear.
+    driver: none
+    notes: >
+      Measures how many cases pass without anyone doing anything. If this is not
+      zero, some case is satisfied by its own starting state.
+
+  - id: mock-baseline
+    description: The full harness on the deterministic mock runtime.
+    driver: harness
+    runtime: mock
+    context_strategy: none
+    notes: >
+      The mock runtime writes placeholder files and calls no model, so it does not
+      solve cases - it exercises the pipeline. Its value is that it is free,
+      deterministic and reachable in CI, which makes it the right thing to compare
+      a harness change against when the question is "did the plumbing regress".
+
+  - id: mock-indexed
+    description: The mock runtime with a retrieval index built before the run.
+    driver: harness
+    runtime: mock
+    context_strategy: indexed
+    notes: >
+      Differs from mock-baseline on exactly one axis, which is what makes the
+      comparison attributable. It measures the cost of indexing, not the benefit -
+      a runtime that ignores its prompt cannot show a benefit from a better one.
+
+  - id: claude-code
+    description: The full harness on an external CLI runtime. Opt-in and billed.
+    driver: harness
+    runtime: claude-code
+    context_strategy: indexed
+    notes: >
+      Every case is a real, billed model call, and the runtime executes its own
+      tools inside a turn - so DevForge's policy engine does not see those calls
+      and the tool-failure and security-violation figures are lower bounds, not
+      totals. Reported unavailable when the CLI is not installed.

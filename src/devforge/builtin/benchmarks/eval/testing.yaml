@@ -1,0 +1,159 @@
+# Testing.
+#
+# "Wrote a test file" is trivially satisfiable and worth nothing, so this category
+# is graded by mutation: the case deliberately breaks the implementation and the
+# submitted tests have to notice. A suite that passes on wrong code has not tested
+# anything, and that is exactly what the check measures.
+version: 1
+name: testing
+description: Write tests that fail when the code is wrong.
+
+cases:
+  - id: testing-mutation-caught
+    category: testing
+    title: Test three untested functions
+    description: >
+      app/stats.py has three functions and no tests. Write tests in tests/ that
+      cover mean(), median() and spread(), including their error cases. The tests
+      must fail if the implementation is changed - tools/mutation_test.py will
+      introduce three deliberate defects and expects each to be caught. Do not edit
+      app/stats.py or tools/mutation_test.py.
+    workflow: feature
+    tags: [mutation]
+    files:
+      app/__init__.py: ""
+      app/stats.py: |
+        """Summary statistics. Correct, and completely untested."""
+
+
+        def mean(values: list[float]) -> float:
+            if not values:
+                raise ValueError("mean of no values")
+            total = sum(values)
+            return total / len(values)
+
+
+        def median(values: list[float]) -> float:
+            if not values:
+                raise ValueError("median of no values")
+            values_sorted = sorted(values)
+            middle = len(values_sorted) // 2
+            if len(values_sorted) % 2 == 1:
+                return values_sorted[middle]
+            return (values_sorted[middle - 1] + values_sorted[middle]) / 2
+
+
+        def spread(values: list[float]) -> float:
+            if not values:
+                raise ValueError("spread of no values")
+            maximum = max(values)
+            minimum = min(values)
+            return maximum - minimum
+      tests/test_import.py: |
+        def test_the_module_imports():
+            import app.stats
+
+            assert hasattr(app.stats, "mean")
+      tools/mutation_test.py: |
+        """Introduce known defects and require the suite to catch every one.
+
+        This is the case's grader, not part of the work. It is a pytest module
+        rather than a standalone script because DevForge's shell allowlist permits
+        `python -m pytest` and not `python <any file>` - a benchmark case does not
+        get to widen the policy it runs under.
+
+        The inner runs target `tests/` explicitly so that collecting this file
+        cannot re-enter it.
+        """
+
+        import pathlib
+        import subprocess
+        import sys
+
+        TARGET = pathlib.Path("app/stats.py")
+
+        MUTATIONS = [
+            ("return total / len(values)", "return total / (len(values) + 1)"),
+            ("return values_sorted[middle]", "return values_sorted[0]"),
+            ("return maximum - minimum", "return maximum + minimum"),
+        ]
+
+
+        def suite_passes() -> bool:
+            result = subprocess.run(
+                [sys.executable, "-m", "pytest", "-q", "tests"],
+                capture_output=True,
+                text=True,
+            )
+            return result.returncode == 0
+
+
+        def test_every_deliberate_defect_is_caught():
+            original = TARGET.read_text(encoding="utf-8")
+            assert suite_passes(), "the suite must pass on the unmodified source first"
+
+            survived = []
+            try:
+                for old, new in MUTATIONS:
+                    assert old in original, f"do not edit {TARGET}: missing anchor {old!r}"
+                    TARGET.write_text(original.replace(old, new, 1), encoding="utf-8")
+                    if suite_passes():
+                        survived.append(old)
+            finally:
+                TARGET.write_text(original, encoding="utf-8")
+
+            assert not survived, f"these defects went unnoticed: {survived}"
+    solution:
+      tests/test_stats.py: |
+        import pytest
+
+        from app.stats import mean, median, spread
+
+
+        def test_mean_of_several_values():
+            assert mean([1, 2, 3, 4]) == 2.5
+
+
+        def test_mean_of_one_value():
+            assert mean([7]) == 7
+
+
+        def test_mean_of_nothing_is_an_error():
+            with pytest.raises(ValueError):
+                mean([])
+
+
+        def test_median_of_an_odd_count():
+            assert median([5, 1, 3]) == 3
+
+
+        def test_median_of_an_even_count():
+            assert median([4, 1, 3, 2]) == 2.5
+
+
+        def test_median_of_nothing_is_an_error():
+            with pytest.raises(ValueError):
+                median([])
+
+
+        def test_spread_is_max_minus_min():
+            assert spread([2, 9, 4]) == 7
+
+
+        def test_spread_of_one_value_is_zero():
+            assert spread([3]) == 0
+
+
+        def test_spread_of_nothing_is_an_error():
+            with pytest.raises(ValueError):
+                spread([])
+    guards:
+      - id: module-imports
+        argv: [python, -m, pytest, -q, tests/test_import.py]
+    checks:
+      - id: suite
+        argv: [python, -m, pytest, -q, tests]
+      - id: mutants-caught
+        description: Every deliberate defect must break the suite
+        argv: [python, -m, pytest, -q, tools/mutation_test.py]
+        timeout_s: 600

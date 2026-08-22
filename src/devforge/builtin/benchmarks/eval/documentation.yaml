@@ -1,0 +1,163 @@
+# Documentation.
+#
+# Graded against the code, not against a word count. The check reads the module
+# with `ast`, finds every public function, and requires a section for each naming
+# its parameters. Documentation that drifts from the signature fails, which is the
+# only failure mode of a reference page that actually costs a reader anything.
+version: 1
+name: documentation
+description: Document the public surface, accurately enough to be checkable.
+
+cases:
+  - id: documentation-api-reference
+    category: documentation
+    title: Write the API reference
+    description: >
+      Write docs/api.md documenting every public function in app/geometry.py. Each
+      function needs a `## name` heading, a sentence describing it, every parameter
+      named in its section, and a line beginning "Returns:". Private helpers
+      (leading underscore) must not appear. tests/test_docs.py checks the page
+      against the module.
+    workflow: feature
+    tags: [docs]
+    files:
+      app/__init__.py: ""
+      app/geometry.py: |
+        """Plane geometry helpers."""
+
+        import math
+
+
+        def area_of_circle(radius: float) -> float:
+            """Area enclosed by a circle."""
+            return math.pi * _square(radius)
+
+
+        def area_of_rectangle(width: float, height: float) -> float:
+            """Area of an axis-aligned rectangle."""
+            return width * height
+
+
+        def distance(x1: float, y1: float, x2: float, y2: float) -> float:
+            """Euclidean distance between two points."""
+            return math.hypot(x2 - x1, y2 - y1)
+
+
+        def _square(value: float) -> float:
+            return value * value
+      tests/test_existing.py: |
+        from app.geometry import area_of_rectangle, distance
+
+
+        def test_rectangle_area():
+            assert area_of_rectangle(3, 4) == 12
+
+
+        def test_distance():
+            assert distance(0, 0, 3, 4) == 5
+      tests/test_docs.py: |
+        """The documentation requirement, checked against the module it describes."""
+
+        import ast
+        import pathlib
+
+        import pytest
+
+        MODULE = pathlib.Path("app/geometry.py")
+        PAGE = pathlib.Path("docs/api.md")
+
+
+        def public_functions():
+            tree = ast.parse(MODULE.read_text(encoding="utf-8"))
+            return [
+                node
+                for node in tree.body
+                if isinstance(node, ast.FunctionDef) and not node.name.startswith("_")
+            ]
+
+
+        @pytest.fixture(scope="module")
+        def sections():
+            assert PAGE.is_file(), "docs/api.md does not exist"
+            text = PAGE.read_text(encoding="utf-8")
+            found: dict[str, str] = {}
+            name = None
+            for line in text.splitlines():
+                if line.startswith("## "):
+                    name = line[3:].strip().split("(")[0].strip("`")
+                    found[name] = ""
+                elif name:
+                    found[name] += line + "\n"
+            return found
+
+
+        def test_every_public_function_has_a_section(sections):
+            missing = [node.name for node in public_functions() if node.name not in sections]
+            assert not missing, f"undocumented: {missing}"
+
+
+        def test_every_parameter_is_named(sections):
+            for node in public_functions():
+                body = sections[node.name]
+                for argument in node.args.args:
+                    assert argument.arg in body, f"{node.name}: parameter '{argument.arg}' missing"
+
+
+        def test_every_section_says_what_it_returns(sections):
+            for node in public_functions():
+                assert "Returns:" in sections[node.name], f"{node.name}: no 'Returns:' line"
+
+
+        def test_every_section_describes_the_function(sections):
+            for node in public_functions():
+                prose = [
+                    line
+                    for line in sections[node.name].splitlines()
+                    if line.strip() and not line.strip().startswith(("-", "*", "|", "`", "Returns:"))
+                ]
+                assert prose, f"{node.name}: the section has no description"
+
+
+        def test_private_helpers_are_not_documented(sections):
+            assert "_square" not in sections
+    solution:
+      docs/api.md: |
+        # app.geometry
+
+        Plane geometry helpers. Every function takes and returns plain floats and
+        raises nothing of its own.
+
+        ## area_of_circle
+
+        The area enclosed by a circle of the given radius.
+
+        - `radius` - the circle's radius, in whatever unit the caller is using.
+
+        Returns: the area, in the square of that unit.
+
+        ## area_of_rectangle
+
+        The area of an axis-aligned rectangle.
+
+        - `width` - the horizontal extent.
+        - `height` - the vertical extent.
+
+        Returns: the product of the two, in square units.
+
+        ## distance
+
+        The straight-line distance between two points on the plane.
+
+        - `x1` - first point's horizontal coordinate.
+        - `y1` - first point's vertical coordinate.
+        - `x2` - second point's horizontal coordinate.
+        - `y2` - second point's vertical coordinate.
+
+        Returns: the Euclidean distance between the two points.
+    guards:
+      - id: behaviour-untouched
+        description: Documenting code is not licence to change it
+        argv: [python, -m, pytest, -q, tests/test_existing.py]
+    checks:
+      - id: suite
+        argv: [python, -m, pytest, -q]

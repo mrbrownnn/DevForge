@@ -1,0 +1,173 @@
+# Bug fixing.
+#
+# These differ from the repair benchmark in `bugs.yaml` in one way that matters:
+# each ships a guard covering behaviour that already works. A fix that passes the
+# failing test by breaking a neighbouring one is a regression here, not a success.
+version: 1
+name: bugfix
+description: Repair a defect without breaking the behaviour around it.
+
+cases:
+  - id: bugfix-pagination-offset
+    category: bugfix
+    title: Off-by-one in pagination
+    description: >
+      page_items() returns the wrong slice - page 2 repeats the last item of page
+      1. Find the root cause in app/paging.py, fix it, and keep the empty-page and
+      first-page behaviour that already works.
+    workflow: bugfix
+    tags: [off-by-one]
+    files:
+      app/__init__.py: ""
+      app/paging.py: |
+        """Pagination."""
+
+
+        def page_count(total: int, per_page: int) -> int:
+            """How many pages `total` items fill. Correct; leave it alone."""
+            if per_page < 1:
+                raise ValueError("per_page must be positive")
+            return -(-total // per_page)
+
+
+        def page_items(items: list, page: int, per_page: int) -> list:
+            """Return one page of items. Pages are 1-based."""
+            if page < 1:
+                raise ValueError("page is 1-based")
+            start = (page - 1) * per_page - 1
+            return items[max(start, 0) : start + per_page]
+      tests/test_existing.py: |
+        import pytest
+
+        from app.paging import page_count, page_items
+
+
+        def test_page_count_rounds_up():
+            assert page_count(5, 2) == 3
+            assert page_count(4, 2) == 2
+            assert page_count(0, 2) == 0
+
+
+        def test_page_count_rejects_a_zero_size():
+            with pytest.raises(ValueError):
+                page_count(5, 0)
+
+
+        def test_page_zero_is_rejected():
+            with pytest.raises(ValueError):
+                page_items([1, 2, 3], 0, 2)
+      tests/test_paging.py: |
+        from app.paging import page_items
+
+
+        def test_first_page():
+            assert page_items([1, 2, 3, 4, 5], 1, 2) == [1, 2]
+
+
+        def test_second_page_does_not_repeat_the_first():
+            assert page_items([1, 2, 3, 4, 5], 2, 2) == [3, 4]
+
+
+        def test_last_partial_page():
+            assert page_items([1, 2, 3, 4, 5], 3, 2) == [5]
+
+
+        def test_page_past_the_end_is_empty():
+            assert page_items([1, 2, 3], 9, 2) == []
+    solution:
+      app/paging.py: |
+        """Pagination."""
+
+
+        def page_count(total: int, per_page: int) -> int:
+            """How many pages `total` items fill. Correct; leave it alone."""
+            if per_page < 1:
+                raise ValueError("per_page must be positive")
+            return -(-total // per_page)
+
+
+        def page_items(items: list, page: int, per_page: int) -> list:
+            """Return one page of items. Pages are 1-based."""
+            if page < 1:
+                raise ValueError("page is 1-based")
+            start = (page - 1) * per_page
+            return items[start : start + per_page]
+    guards:
+      - id: existing-behaviour
+        argv: [python, -m, pytest, -q, tests/test_existing.py]
+    checks:
+      - id: suite
+        argv: [python, -m, pytest, -q]
+
+  - id: bugfix-shared-default
+    category: bugfix
+    title: Mutable default argument
+    description: >
+      Two carts created by new_cart() share the same list, so adding to one adds to
+      the other. Fix the cause in app/cart.py. The single-cart behaviour covered by
+      tests/test_existing.py must keep working.
+    workflow: bugfix
+    tags: [aliasing]
+    files:
+      app/__init__.py: ""
+      app/cart.py: |
+        """Shopping carts."""
+
+
+        def new_cart(items: list = []) -> dict:
+            """Create a cart, optionally seeded with items."""
+            return {"items": items}
+
+
+        def add(cart: dict, item: str) -> dict:
+            cart["items"].append(item)
+            return cart
+      tests/test_existing.py: |
+        from app.cart import add, new_cart
+
+
+        def test_adding_to_one_cart():
+            cart = new_cart()
+            add(cart, "apple")
+            assert cart["items"] == ["apple"]
+
+
+        def test_seeded_cart_keeps_its_items():
+            cart = new_cart(["pear"])
+            add(cart, "plum")
+            assert cart["items"] == ["pear", "plum"]
+      tests/test_cart.py: |
+        from app.cart import add, new_cart
+
+
+        def test_two_carts_do_not_share_items():
+            first = new_cart()
+            second = new_cart()
+            add(first, "apple")
+            assert second["items"] == []
+
+
+        def test_a_seeded_list_is_not_mutated_by_the_cart():
+            seed = ["pear"]
+            cart = new_cart(seed)
+            add(cart, "plum")
+            assert seed == ["pear"]
+    solution:
+      app/cart.py: |
+        """Shopping carts."""
+
+
+        def new_cart(items: list | None = None) -> dict:
+            """Create a cart, optionally seeded with items."""
+            return {"items": list(items) if items else []}
+
+
+        def add(cart: dict, item: str) -> dict:
+            cart["items"].append(item)
+            return cart
+    guards:
+      - id: existing-behaviour
+        argv: [python, -m, pytest, -q, tests/test_existing.py]
+    checks:
+      - id: suite
+        argv: [python, -m, pytest, -q]

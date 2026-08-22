@@ -1,0 +1,133 @@
+# Refactoring.
+#
+# A refactor is the hardest thing to grade, because "the tests still pass" is also
+# true of doing nothing. Each case therefore carries two checks: the behaviour
+# guard, which must keep passing, and a structural check that fails until the
+# duplication is actually gone. Neither alone would measure a refactor.
+version: 1
+name: refactor
+description: Change the shape of the code without changing what it does.
+
+cases:
+  - id: refactor-extract-duplication
+    category: refactor
+    title: Extract three copies of one loop
+    description: >
+      app/report.py renders CSV, TSV and pipe-separated output with three
+      near-identical functions. Extract the shared logic into one helper named
+      _render and make the three public functions delegate to it. The output of
+      every renderer must stay byte-identical - tests/test_existing.py pins it.
+    workflow: refactor
+    tags: [duplication]
+    files:
+      app/__init__.py: ""
+      app/report.py: |
+        """Row rendering. Three renderers, one idea, three copies."""
+
+
+        def render_csv(rows: list[list[str]]) -> str:
+            lines = []
+            for row in rows:
+                lines.append(",".join(str(cell).strip() for cell in row))
+            return "\n".join(lines)
+
+
+        def render_tsv(rows: list[list[str]]) -> str:
+            lines = []
+            for row in rows:
+                lines.append("\t".join(str(cell).strip() for cell in row))
+            return "\n".join(lines)
+
+
+        def render_psv(rows: list[list[str]]) -> str:
+            lines = []
+            for row in rows:
+                lines.append("|".join(str(cell).strip() for cell in row))
+            return "\n".join(lines)
+      tests/test_existing.py: |
+        from app.report import render_csv, render_psv, render_tsv
+
+        ROWS = [["a", " b "], ["c", "d"]]
+
+
+        def test_csv():
+            assert render_csv(ROWS) == "a,b\nc,d"
+
+
+        def test_tsv():
+            assert render_tsv(ROWS) == "a\tb\nc\td"
+
+
+        def test_psv():
+            assert render_psv(ROWS) == "a|b\nc|d"
+
+
+        def test_empty_input():
+            assert render_csv([]) == ""
+      tests/test_structure.py: |
+        """The refactor itself, stated as a test.
+
+        Behaviour tests cannot tell a finished refactor from an untouched file, so
+        the structural requirement is checked directly: one helper, three thin
+        delegating functions.
+        """
+
+        import ast
+        import pathlib
+
+        SOURCE = pathlib.Path("app/report.py").read_text(encoding="utf-8")
+        TREE = ast.parse(SOURCE)
+        FUNCTIONS = {
+            node.name: node for node in TREE.body if isinstance(node, ast.FunctionDef)
+        }
+
+
+        def test_a_shared_helper_exists():
+            assert "_render" in FUNCTIONS, "extract the shared logic into _render"
+
+
+        def test_the_public_renderers_delegate():
+            for name in ("render_csv", "render_tsv", "render_psv"):
+                node = FUNCTIONS[name]
+                body = [item for item in node.body if not _is_docstring(item)]
+                assert len(body) == 1, f"{name} should be one delegating statement"
+
+
+        def test_the_loop_is_written_once():
+            loops = [node for node in ast.walk(TREE) if isinstance(node, ast.For)]
+            comprehensions = [
+                node for node in ast.walk(TREE) if isinstance(node, ast.GeneratorExp | ast.ListComp)
+            ]
+            assert len(loops) + len(comprehensions) <= 2, "the row loop is still duplicated"
+
+
+        def _is_docstring(item):
+            return isinstance(item, ast.Expr) and isinstance(item.value, ast.Constant)
+    solution:
+      app/report.py: |
+        """Row rendering. One implementation, three separators."""
+
+
+        def _render(rows: list[list[str]], separator: str) -> str:
+            return "\n".join(
+                separator.join(str(cell).strip() for cell in row) for row in rows
+            )
+
+
+        def render_csv(rows: list[list[str]]) -> str:
+            return _render(rows, ",")
+
+
+        def render_tsv(rows: list[list[str]]) -> str:
+            return _render(rows, "\t")
+
+
+        def render_psv(rows: list[list[str]]) -> str:
+            return _render(rows, "|")
+    guards:
+      - id: existing-behaviour
+        description: Output must be byte-identical after the refactor
+        argv: [python, -m, pytest, -q, tests/test_existing.py]
+    checks:
+      - id: suite
+        argv: [python, -m, pytest, -q]
