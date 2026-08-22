@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC
+from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -529,3 +530,117 @@ def where(
         render.error(f"'{name}' is not installed")
         raise typer.Exit(code=1)
     render.info(str(path))
+
+
+# --------------------------------------------------------------------------- radar
+
+
+def _radar_root() -> Path:
+    from devforge.core.state.store import ProjectStore
+
+    try:
+        return ProjectStore.discover(None).root
+    except DevForgeError:
+        return Path.cwd().resolve()
+
+
+@skill_app.command("radar")
+def radar(
+    output: Annotated[
+        Path | None, typer.Option("--output", "-o", help="Write the report here.")
+    ] = None,
+    section: Annotated[
+        str | None, typer.Option("--section", help="NEW, UPDATE, WARNING or DEPRECATE.")
+    ] = None,
+    as_json: Annotated[bool, typer.Option("--json", help="Emit JSON.")] = False,
+) -> None:
+    """Sweep the watched sources and report what changed.
+
+    Reads configured sources, operator-supplied feeds and the local catalogue.
+    DevForge cannot search the internet, so new names arrive through a feed; the
+    report lists every source it consulted and every one it could not.
+    """
+    from devforge.radar.discover import sweep
+
+    root = _radar_root()
+    try:
+        report = sweep(root)
+    except DevForgeError as exc:
+        render.error(str(exc))
+        raise typer.Exit(code=1) from exc
+
+    if as_json:
+        render.emit_json(report.model_dump(mode="json"))
+    elif output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(report.render(), encoding="utf-8")
+        render.success(f"wrote {output}")
+    else:
+        render.render_radar(report, only=section.upper() if section else None)
+
+    if any(candidate.verdict.value in {"WARN", "DEPRECATE"} for candidate in report.candidates):
+        raise typer.Exit(code=1)
+
+
+@skill_app.command("outdated")
+def outdated_command(
+    as_json: Annotated[bool, typer.Option("--json", help="Emit JSON.")] = False,
+) -> None:
+    """Installed skills that a sweep found a newer version of."""
+    from devforge.radar.discover import outdated
+
+    candidates = outdated(_radar_root())
+    if as_json:
+        render.emit_json([candidate.model_dump(mode="json") for candidate in candidates])
+        return
+
+    if not candidates:
+        render.info("nothing installed is behind a version the radar can see")
+        render.console.print(
+            "[dim]That is not the same as up to date: the radar only sees what its "
+            "sources carry.[/dim]"
+        )
+        return
+    render.render_radar_updates(candidates)
+
+
+@skill_app.command("audit-all")
+def audit_all(
+    as_json: Annotated[bool, typer.Option("--json", help="Emit JSON.")] = False,
+) -> None:
+    """Re-inspect every installed skill and report what the checks found."""
+    from devforge.radar.audit import audit_installed
+
+    root = _radar_root()
+    try:
+        results = audit_installed(root)
+    except DevForgeError as exc:
+        render.error(str(exc))
+        raise typer.Exit(code=1) from exc
+
+    if as_json:
+        render.emit_json([result.model_dump(mode="json") for result in results])
+    else:
+        render.render_skill_audit(results)
+
+    if any(result.security.blocking for result in results):
+        raise typer.Exit(code=1)
+
+
+@skill_app.command("recommend")
+def recommend_command(
+    limit: Annotated[int, typer.Option("--limit", help="How many to suggest.")] = 5,
+    as_json: Annotated[bool, typer.Option("--json", help="Emit JSON.")] = False,
+) -> None:
+    """The candidates worth a person's review, best first. Installs nothing."""
+    from devforge.radar.discover import recommend
+
+    candidates = recommend(_radar_root(), limit=limit)
+    if as_json:
+        render.emit_json([candidate.model_dump(mode="json") for candidate in candidates])
+        return
+
+    if not candidates:
+        render.info("nothing to recommend from the sources the radar can see")
+        return
+    render.render_radar_recommendations(candidates)

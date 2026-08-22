@@ -768,3 +768,110 @@ def render_audit_trail(events, problems: list[str]) -> None:
             console.print(f"  [red]{escape(problem)}[/red]")
     else:
         console.print(f"[green]chain intact[/green] over {len(events)} entries")
+
+
+RADAR_VERDICT_STYLE = {
+    "INSTALL": "bold green",
+    "REVIEW": "cyan",
+    "WATCH": "dim",
+    "WARN": "bold red",
+    "DEPRECATE": "magenta",
+}
+
+
+def render_radar(report, *, only: str | None = None) -> None:
+    """The four sections, then what the sweep could not see.
+
+    Coverage prints even when everything is clean. A radar whose blind spots are
+    invisible reads as though it looked everywhere.
+    """
+    from devforge.radar.models import Section
+
+    printed = False
+    for section in Section:
+        if only and section.value != only:
+            continue
+        candidates = report.section(section)
+        if not candidates:
+            continue
+        printed = True
+        console.print(f"\n[bold]{section.value}[/bold]")
+        for candidate in candidates:
+            style = RADAR_VERDICT_STYLE.get(candidate.verdict.value, "default")
+            console.print(f"  {escape(candidate.name)}")
+            if section is Section.UPDATE:
+                console.print(
+                    f"    version: {escape(candidate.installed_version or '?')} → "
+                    f"{escape(candidate.available_version or '?')}"
+                )
+                console.print(f"    security: {escape(candidate.security.summary())}")
+            else:
+                console.print(f"    score: {candidate.score.normalised}")
+                console.print(
+                    f"    recommendation: [{style}]{candidate.verdict.value}[/]"
+                )
+                console.print(f"    reason: {escape(candidate.rationale[:100])}")
+
+    if not printed:
+        console.print("[dim]nothing to report from the sources the radar can see[/dim]")
+
+    console.print(f"\n[dim]sources consulted: {', '.join(report.sources) or 'none'}[/dim]")
+    for source, reason in sorted(report.unreachable.items()):
+        console.print(f"  [magenta]not consulted[/magenta] {escape(source)}: {escape(reason)}")
+    console.print(
+        "[dim]DevForge does not crawl. A skill that is not listed was not looked "
+        "for, and every candidate is untrusted until a person reviews it.[/dim]"
+    )
+
+
+def render_radar_updates(candidates) -> None:
+    table = Table("skill", "installed", "available", "security", box=None)
+    for candidate in candidates:
+        table.add_row(
+            escape(candidate.name),
+            escape(candidate.installed_version or "-"),
+            escape(candidate.available_version or "-"),
+            escape(candidate.security.summary()),
+        )
+    console.print(table)
+
+
+def render_radar_recommendations(candidates) -> None:
+    for candidate in candidates:
+        style = RADAR_VERDICT_STYLE.get(candidate.verdict.value, "default")
+        console.print(
+            f"[{style}]{candidate.verdict.value}[/] {escape(candidate.name)} "
+            f"(score {candidate.score.normalised})"
+        )
+        console.print(f"    {escape(candidate.rationale)}")
+        breakdown = ", ".join(
+            f"{name} {value:+d}" if value < 0 else f"{name} {value}"
+            for name, value in candidate.score.breakdown().items()
+            if value
+        )
+        console.print(f"    [dim]{escape(breakdown)}[/dim]")
+    console.print(
+        "\n[dim]A recommendation is a sentence for a person to act on. Nothing here "
+        "is installed; devforge skill install is a separate, approval-gated act.[/dim]"
+    )
+
+
+def render_skill_audit(results) -> None:
+    table = Table("skill", "version", "intact", "security", box=None)
+    for result in results:
+        table.add_row(
+            escape(result.name),
+            escape(result.version),
+            "[green]yes[/green]" if result.intact else "[bold red]drifted[/bold red]",
+            escape(result.security.summary()),
+        )
+    console.print(table)
+
+    for result in results:
+        for problem in result.security.blocking:
+            console.print(f"  [bold red]{escape(result.name)}[/bold red] {escape(problem)}")
+    unavailable = sum(len(result.security.unavailable) for result in results)
+    if unavailable:
+        console.print(
+            f"[dim]{unavailable} check(s) could not run; unavailable is not clean[/dim]"
+        )
