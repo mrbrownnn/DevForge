@@ -22,6 +22,7 @@ from devforge.cli import (
     continuous_commands,
     eval_commands,
     git_commands,
+    platform_commands,
     render,
     security_commands,
     skill_commands,
@@ -712,6 +713,7 @@ app.add_typer(security_commands.app, name="security")
 app.add_typer(eval_commands.app, name="eval")
 app.add_typer(git_commands.app, name="git")
 app.add_typer(continuous_commands.app, name="continuous")
+app.add_typer(platform_commands.app, name="platform")
 # Codebase intelligence: build the map, inspect what an agent will be given.
 app.command("index")(context_commands.index_command)
 app.command("context")(context_commands.context_command)

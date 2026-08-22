@@ -645,3 +645,126 @@ def render_continuous_verification(result) -> None:
             "[red]not complete[/red] - a finding that still fires means the work is "
             "not done, whatever the workflow reported"
         )
+
+
+PLATFORM_STATE_STYLE = {
+    "queued": "cyan",
+    "leased": "yellow",
+    "awaiting_approval": "bold yellow",
+    "executed": "yellow",
+    "verified": "bold green",
+    "rejected": "bold red",
+    "failed": "red",
+    "expired": "magenta",
+}
+
+
+def render_workers(identities) -> None:
+    table = Table("worker", "enabled", "capabilities", "tools", "runtimes", "key", box=None)
+    for identity in identities:
+        table.add_row(
+            escape(identity.worker_id),
+            "[green]yes[/green]" if identity.enabled else "[red]revoked[/red]",
+            ", ".join(c.value for c in identity.capabilities) or "-",
+            ", ".join(identity.tools) or "-",
+            ", ".join(identity.runtimes) or "-",
+            identity.key_fingerprint or "-",
+        )
+    console.print(table)
+
+
+def render_platform_task(record) -> None:
+    """One task: what the worker claimed, and what the control plane confirmed.
+
+    The two are shown side by side rather than merged. A worker's report is
+    evidence about the worker, not about the work, and a reader who cannot see
+    both cannot notice when they disagree.
+    """
+    style = PLATFORM_STATE_STYLE.get(record.state.value, "default")
+    console.print(
+        Panel(
+            f"[{style}]{record.state.value}[/]  {escape(record.envelope.description[:70])}\n"
+            f"{escape(record.reason)}",
+            title=escape(record.task_id),
+            expand=False,
+        )
+    )
+
+    claimed = record.result.claims if record.result else []
+    if claimed or record.verified:
+        table = Table("verifier", "worker claimed", "control plane confirmed", box=None)
+        names = sorted({c.verifier for c in claimed} | {c.verifier for c in record.verified})
+        by_claim = {c.verifier: c for c in claimed}
+        by_confirmed = {c.verifier: c for c in record.verified}
+        for name in names:
+            claim = by_claim.get(name)
+            confirmed = by_confirmed.get(name)
+            table.add_row(
+                escape(name),
+                escape(claim.status) if claim else "[dim]not reported[/dim]",
+                escape(confirmed.status) if confirmed else "[dim]not checked[/dim]",
+            )
+        console.print(table)
+
+    if record.artifact_paths:
+        console.print(f"[dim]artifacts: {', '.join(record.artifact_paths)}[/dim]")
+    if not record.envelope.verify:
+        console.print(
+            "[yellow]nothing was independently confirmed[/yellow] - this task declared "
+            "no artifact to verify, so the control plane had nothing to check"
+        )
+    console.print(
+        "[dim]Only the confirmed column is evidence. The claimed column is what the "
+        "worker said about itself.[/dim]"
+    )
+
+
+def render_platform_status(status: dict, records) -> None:
+    console.print(f"[dim]{status['root']}[/dim]")
+    if records:
+        table = Table("task", "state", "worker", "attempts", "description", box=None)
+        for record in records:
+            style = PLATFORM_STATE_STYLE.get(record.state.value, "default")
+            table.add_row(
+                escape(record.task_id),
+                f"[{style}]{record.state.value}[/]",
+                escape(record.lease.worker_id if record.lease else "-"),
+                str(record.attempts),
+                escape(record.envelope.description[:52]),
+            )
+        console.print(table)
+    else:
+        console.print("[dim]the queue is empty[/dim]")
+
+    console.print(f"{status['counts']}  -  {len(status['workers'])} worker(s)")
+    if status["audit_intact"]:
+        console.print(
+            f"[green]audit chain intact[/green] ({status['audit_entries']} entries)"
+        )
+    else:
+        console.print("[bold red]audit chain is broken[/bold red] - run devforge platform audit")
+    if status["unreadable_queue_files"]:
+        console.print(
+            f"[magenta]unreadable queue files:[/magenta] "
+            f"{', '.join(status['unreadable_queue_files'])}"
+        )
+
+
+def render_audit_trail(events, problems: list[str]) -> None:
+    table = Table("#", "at", "event", "task", "worker", box=None)
+    for event in events:
+        table.add_row(
+            str(event.sequence),
+            event.at.strftime("%H:%M:%S"),
+            escape(event.event),
+            escape(event.task_id or "-"),
+            escape(event.worker_id or "-"),
+        )
+    console.print(table)
+
+    if problems:
+        console.print("[bold red]the chain does not verify[/bold red]")
+        for problem in problems:
+            console.print(f"  [red]{escape(problem)}[/red]")
+    else:
+        console.print(f"[green]chain intact[/green] over {len(events)} entries")
