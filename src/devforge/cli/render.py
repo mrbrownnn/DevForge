@@ -392,3 +392,98 @@ def render_threats(layers, threats) -> None:
             escape(threat.residual[:70] + ("..." if len(threat.residual) > 70 else "")),
         )
     console.print(threat_table)
+
+
+EVAL_STYLE = {
+    "success": "green",
+    "failed": "red",
+    "regressed": "bold red",
+    "rejected_suspicious": "bold red",
+    "invalid": "magenta",
+    "unavailable": "yellow",
+}
+
+
+def render_eval(report) -> None:
+    """Per-case grid, then the metrics, then what none of it establishes.
+
+    The caveat is printed on every run rather than left in the docs. A success
+    rate is the most quotable number here and it travels without its denominator
+    unless the denominator travels with it.
+    """
+    table = Table("case", "category", "outcome", "checks", "ms", "detail", box=None)
+    for result in report.results:
+        style = EVAL_STYLE.get(result.outcome.value, "")
+        passed = sum(1 for check in result.checks if check.passed)
+        table.add_row(
+            escape(result.case_id),
+            result.category.value,
+            f"[{style}]{result.outcome.value}[/]",
+            f"{passed}/{len(result.checks)}" if result.checks else "-",
+            str(result.duration_ms),
+            escape(result.detail[:70]),
+        )
+    console.print(table)
+
+    for result in report.results:
+        for finding in result.findings:
+            console.print(f"  [red]{escape(result.case_id)}[/red] {escape(finding)}")
+
+    metrics = Table("metric", "value", "basis", box=None)
+    for metric in report.metrics.values:
+        known = metric.known
+        metrics.add_row(
+            metric.label,
+            f"[bold]{metric.format()}[/bold]" if known else "[dim]unknown[/dim]",
+            escape(metric.basis if known else metric.unknown_reason),
+        )
+    console.print()
+    console.print(metrics)
+
+    if report.unhonoured:
+        console.print()
+        for item in report.unhonoured:
+            console.print(f"  [yellow]not honoured[/yellow] {escape(item)}")
+
+    console.print(
+        Panel(
+            f"configuration [bold]{escape(report.config.id)}[/bold] "
+            f"({escape(report.config.driver)} driver, runtime "
+            f"{escape(report.config.runtime)})\n"
+            f"{len(report.succeeded)} of {len(report.attempted)} attempted case(s) "
+            f"succeeded; {report.total - len(report.attempted)} not attempted\n\n"
+            "These cases are small and have known answers. The number does not\n"
+            "transfer to real defects in real codebases, and a difference between\n"
+            "two configurations this size cannot be separated from variation.",
+            title="evaluation",
+            expand=False,
+        )
+    )
+
+
+def render_eval_cases(cases, categories: list[str]) -> None:
+    table = Table("case", "category", "workflow", "requires", "title", box=None)
+    for case in cases:
+        table.add_row(
+            escape(case.id),
+            case.category.value,
+            case.workflow,
+            ", ".join(case.requires) or "-",
+            escape(case.title),
+        )
+    console.print(table)
+    console.print(f"[dim]{len(cases)} case(s) across {len(categories)} category names[/dim]")
+
+
+def render_eval_configs(configs) -> None:
+    table = Table("id", "driver", "runtime", "model", "context", "description", box=None)
+    for config in configs:
+        table.add_row(
+            escape(config.id),
+            config.driver,
+            config.runtime,
+            config.model or "-",
+            config.context_strategy,
+            escape(config.description),
+        )
+    console.print(table)

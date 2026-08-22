@@ -19,6 +19,7 @@ import typer
 from devforge import __version__
 from devforge.cli import (
     context_commands,
+    eval_commands,
     render,
     security_commands,
     skill_commands,
@@ -706,6 +707,7 @@ app.add_typer(supplychain_commands.registry_app, name="registry")
 # Third-party skill lifecycle: search, inspect, audit, install, update, remove, list.
 app.add_typer(skill_commands.skill_app, name="skill")
 app.add_typer(security_commands.app, name="security")
+app.add_typer(eval_commands.app, name="eval")
 # Codebase intelligence: build the map, inspect what an agent will be given.
 app.command("index")(context_commands.index_command)
 app.command("context")(context_commands.context_command)
