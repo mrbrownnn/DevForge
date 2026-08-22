@@ -29,6 +29,7 @@ EXPECTED_DOCS = (
     "debugging.md",
     "evaluation.md",
     "git.md",
+    "continuous.md",
     "contributing.md",
 )
 

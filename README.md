@@ -138,6 +138,7 @@ Full details: [docs/architecture.md](docs/architecture.md).
 | **Security Center** | Threat model, posture audit, workspace scan, SBOM. | [docs/security/security-center.md](docs/security/security-center.md) |
 | **Evaluation** | Benchmark cases with known answers, twelve metrics, a calibrated grader. | [docs/evaluation.md](docs/evaluation.md) |
 | **Git-native flow** | Isolated worktrees, screened commits, PR artifacts, refused history rewrites. | [docs/git.md](docs/git.md) |
+| **Continuous engineering** | Ten detectors, findings with confidence, approval before any work. | [docs/continuous.md](docs/continuous.md) |
 
 ---
 
@@ -184,6 +185,12 @@ Full details: [docs/architecture.md](docs/architecture.md).
 | `devforge git commit` | Plan a commit, screen its contents, then record it |
 | `devforge git pr` | Write the pull-request artifact (does not push) |
 | `devforge git guard` | Say what would happen to a git command, without running it |
+| `devforge continuous detect` | Scan for engineering work nobody has filed yet |
+| `devforge continuous propose` | Record findings as proposals in the backlog |
+| `devforge continuous backlog` | Proposals and what happened to them |
+| `devforge continuous approve` | Agree that a proposal is worth doing |
+| `devforge continuous execute` | Prepare an approved proposal in an isolated worktree |
+| `devforge continuous verify` | Re-detect and check the findings stopped firing |
 
 Exit codes: `0` success, `1` failure, `2` paused awaiting approval.
 
@@ -403,6 +410,12 @@ Stated plainly, because a harness that hides its gaps is worse than useless:
   history rewriting are refused outright rather than gated, and the commit content
   guard is pattern matching - it finds credential-shaped strings and known credential
   filenames, not a secret that reads like prose. See [docs/git.md](docs/git.md).
+- **Continuous engineering proposes; it never acts.** `devforge continuous` detects
+  findings and records proposals, and `execute` only creates a worktree and writes the
+  issue - no source file is modified without an approved proposal and a workflow run.
+  Every detector is static: nothing is executed or profiled, so a finding is a
+  hypothesis to confirm rather than a defect that was proven. See
+  [docs/continuous.md](docs/continuous.md).
 - **One real runtime adapter.** Claude Code. Codex/OpenCode adapters are interface
   work, not present.
 - **Agent tool calls are proxied only for runtimes that delegate.** A runtime given a
