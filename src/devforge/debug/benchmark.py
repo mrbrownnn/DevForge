@@ -151,22 +151,36 @@ _ASSERT_LINE = re.compile(r"^(\s*)assert\b.*$", re.MULTILINE)
 _RAISES_BLOCK = re.compile(r"^(\s*)with pytest\.raises\([^)]*\):\s*\n(?:\1\s+.*\n)+", re.MULTILINE)
 
 
-async def cheat_solver(workspace: Path, case: BugCase) -> None:
-    """Make the suite green by removing what checks it.
+def weaken_tests(workspace: Path, relative_paths: list[str]) -> list[str]:
+    """Delete what the given test files check, and report which ones changed.
 
-    The adversarial control. It never touches the source - it deletes assertions
-    and neuters ``pytest.raises`` blocks until nothing can fail. A grader that
-    scores this above zero is rewarding exactly the behaviour the harness exists
-    to prevent.
+    This is the adversarial control shared by the repair benchmark and the
+    evaluation harness. It never touches the source under test - it removes
+    assertions and neuters ``pytest.raises`` blocks until nothing can fail, which
+    is the cheapest way to turn any suite green.
+
+    A grader that scores this above zero rewards exactly the behaviour the harness
+    exists to prevent, so both graders run it deliberately and require zero.
     """
-    for relative in case.files:
+    weakened: list[str] = []
+    for relative in relative_paths:
         if "test" not in Path(relative).name:
             continue
         path = workspace / relative
+        if not path.is_file():
+            continue
         text = path.read_text(encoding="utf-8")
-        text = _RAISES_BLOCK.sub(lambda m: f"{m.group(1)}pass\n", text)
-        text = _ASSERT_LINE.sub(lambda m: f"{m.group(1)}pass", text)
-        path.write_text(text, encoding="utf-8")
+        rewritten = _RAISES_BLOCK.sub(lambda m: f"{m.group(1)}pass\n", text)
+        rewritten = _ASSERT_LINE.sub(lambda m: f"{m.group(1)}pass", rewritten)
+        if rewritten != text:
+            path.write_text(rewritten, encoding="utf-8")
+            weakened.append(relative)
+    return weakened
+
+
+async def cheat_solver(workspace: Path, case: BugCase) -> None:
+    """Make the suite green by removing what checks it. Must score 0.0."""
+    weaken_tests(workspace, list(case.files))
 
 
 BUILTIN_SOLVERS: dict[str, Solver] = {

@@ -84,6 +84,29 @@ class AgentRuntime(ABC):
         """
         return RuntimeCapabilities(name=self.name, capabilities=set())
 
+    def configure(self, **settings: object) -> list[str]:
+        """Apply optional per-run settings, returning the ones it could not honour.
+
+        Evaluation needs to vary a runtime's model between runs, and the caller
+        must be able to tell "ran with that model" from "asked for that model and
+        was ignored" - otherwise a comparison labels two identical runs as a model
+        difference. Returning the unhonoured names makes the gap reportable
+        instead of invisible.
+
+        Only attributes the adapter already declares can be set. An adapter that
+        accepts no settings inherits this and correctly reports everything as
+        unhonoured.
+        """
+        unhonoured: list[str] = []
+        for key, value in settings.items():
+            if value is None:
+                continue
+            if hasattr(self, key):
+                setattr(self, key, value)
+            else:
+                unhonoured.append(key)
+        return unhonoured
+
     def describe(self) -> str:
         return self.__doc__.strip().splitlines()[0] if self.__doc__ else self.name
 
