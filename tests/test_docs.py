@@ -27,6 +27,7 @@ EXPECTED_DOCS = (
     "security.md",
     "browser.md",
     "debugging.md",
+    "evaluation.md",
     "contributing.md",
 )
 

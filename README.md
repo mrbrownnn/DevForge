@@ -136,6 +136,7 @@ Full details: [docs/architecture.md](docs/architecture.md).
 | **Policy** | Permission allowlists and approval gates. | [docs/security.md](docs/security.md) |
 | **Patch guard** | Reads a repair's diff for the ways it can cheat. | [docs/debugging.md](docs/debugging.md) |
 | **Security Center** | Threat model, posture audit, workspace scan, SBOM. | [docs/security/security-center.md](docs/security/security-center.md) |
+| **Evaluation** | Benchmark cases with known answers, twelve metrics, a calibrated grader. | [docs/evaluation.md](docs/evaluation.md) |
 
 ---
 
@@ -173,6 +174,11 @@ Full details: [docs/architecture.md](docs/architecture.md).
 | `devforge security sbom` | CycloneDX inventory: packages, skills, MCP servers, runtime binaries |
 | `devforge security threats` | The threat model and the defence-in-depth layers |
 | `devforge security report` | Full report: audit, scan, inventory and residual risk |
+| `devforge eval run` | Measure one configuration against the benchmark cases |
+| `devforge eval compare` | Two reports side by side; names differences, never a winner |
+| `devforge eval report` | Render a saved evaluation report as Markdown |
+| `devforge eval cases` | The benchmark cases that apply here |
+| `devforge eval configs` | The evaluation configurations that apply here |
 
 Exit codes: `0` success, `1` failure, `2` paused awaiting approval.
 
@@ -380,6 +386,13 @@ Stated plainly, because a harness that hides its gaps is worse than useless:
   measures a repair success rate against small, self-contained Python bugs with known
   fixes. It is not a prediction about real defects in real codebases. See
   [docs/debugging.md](docs/debugging.md).
+- **The evaluation measures small cases with known answers.** `devforge eval` scores a
+  configuration on ten self-contained cases across eight categories. Real defects in
+  real codebases are neither small nor answered in advance, so the number does not
+  transfer to them - and with ten cases, one case is worth ten percent, which is far
+  too coarse to separate a real improvement from run-to-run variation. `eval compare`
+  therefore reports directions and refuses to declare a winner. See
+  [docs/evaluation.md](docs/evaluation.md).
 - **One real runtime adapter.** Claude Code. Codex/OpenCode adapters are interface
   work, not present.
 - **Agent tool calls are proxied only for runtimes that delegate.** A runtime given a
