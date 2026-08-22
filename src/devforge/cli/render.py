@@ -487,3 +487,62 @@ def render_eval_configs(configs) -> None:
             escape(config.description),
         )
     console.print(table)
+
+
+def render_worktrees(entries: list[dict], active: str) -> None:
+    table = Table("branch", "path", "", box=None)
+    for entry in entries:
+        branch = entry.get("branch") or "(detached)"
+        marker = "[green]you are here[/green]" if branch == active else ""
+        table.add_row(escape(branch), escape(entry.get("path", "")), marker)
+    console.print(table)
+
+
+GIT_EFFECT_STYLE = {"allow": "green", "require_approval": "yellow", "refuse": "bold red"}
+
+
+def render_git_verdict(argv: list[str], verdict) -> None:
+    style = GIT_EFFECT_STYLE.get(verdict.effect.value, "")
+    console.print(f"[dim]git[/dim] {escape(' '.join(argv[1:]))}")
+    console.print(f"  [{style}]{verdict.effect.value}[/] {escape(verdict.reason)}")
+    if verdict.gate:
+        console.print(f"  [dim]gate:[/dim] {escape(verdict.gate)}")
+
+
+FLAG_STYLE = {
+    "secret": "bold red",
+    "credential_file": "bold red",
+    "binary": "red",
+    "oversized": "yellow",
+    "unrelated": "yellow",
+}
+
+
+def render_commit_plan(plan) -> None:
+    """The message, the files, then anything found in them.
+
+    Flags print after the plan rather than instead of it: a person deciding
+    whether a flag is a false positive needs to see what the commit actually is.
+    """
+    console.print(Panel(escape(plan.message().rstrip()), title="commit", expand=False))
+
+    if plan.files:
+        table = Table("file", box=None)
+        for name in plan.files:
+            table.add_row(escape(name))
+        console.print(table)
+    else:
+        console.print("[dim]no files[/dim]")
+
+    for flag in plan.flags:
+        style = FLAG_STYLE.get(flag.kind.value, "")
+        prefix = "blocks" if flag.blocking else "review"
+        console.print(f"  [{style}]{prefix}[/] {escape(flag.describe())}")
+
+    if plan.safe:
+        console.print("[green]no blocking flags[/green]")
+    else:
+        console.print(
+            f"[bold red]{len(plan.blocking_flags)} blocking flag(s)[/bold red] - "
+            "this commit will not be recorded"
+        )
