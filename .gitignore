@@ -19,3 +19,9 @@ scratch/
 *.key
 id_rsa*
 secrets/
+
+# Evaluation output. Reports are build artefacts: machine-specific (latency
+# depends on the machine) and regenerated on every run. Commit one deliberately
+# when it is the baseline an investigation refers to.
+reports/*.json
+reports/workspaces/

@@ -1,0 +1,132 @@
+# Cases about DevForge's own declarative formats.
+#
+# This file exists partly as a real benchmark and partly as proof that
+# project-local discovery works: nothing in the package knows it is here, and
+# `devforge eval cases` lists it anyway.
+#
+# These cases import DevForge inside their checks, which is legitimate here and
+# would not be in a shipped suite - this is DevForge's repository, and the thing
+# under test is its own workflow schema.
+version: 1
+name: devforge
+description: Author DevForge's declarative files correctly.
+
+cases:
+  - id: devforge-workflow-verifier
+    category: feature
+    title: Wire a verifier into a workflow
+    description: >
+      workflow.yaml runs a build step but nothing checks the result. Add a
+      verifier with id `lint` that runs `ruff check .`, is required, and is
+      referenced by the `implementation` step's verify list. Keep every existing
+      step and the existing `tests` verifier exactly as they are.
+      tests/test_workflow_shape.py states the requirement.
+    workflow: feature
+    tags: [yaml, schema]
+    files:
+      workflow.yaml: |
+        name: shipit
+        version: 1.0.0
+        description: Build something and check it.
+
+        verifiers:
+          - id: tests
+            kind: tests
+            argv: [python, -m, pytest, -q]
+            required: true
+
+        steps:
+          - id: implementation
+            agent: coder
+            skills: [backend]
+            verify: [tests]
+
+          - id: review
+            agent: reviewer
+            skills: [security]
+      tests/test_existing.py: |
+        """What must not change."""
+
+        from devforge.core.workflow.spec import WorkflowSpec
+        import pathlib
+        import yaml
+
+
+        def load():
+            raw = yaml.safe_load(pathlib.Path("workflow.yaml").read_text(encoding="utf-8"))
+            return WorkflowSpec.model_validate(raw)
+
+
+        def test_the_workflow_still_parses():
+            assert load().name == "shipit"
+
+
+        def test_both_steps_survive():
+            assert [step.id for step in load().steps] == ["implementation", "review"]
+
+
+        def test_the_tests_verifier_is_untouched():
+            tests = next(v for v in load().verifiers if v.id == "tests")
+            assert tests.argv == ["python", "-m", "pytest", "-q"]
+            assert tests.required is True
+      tests/test_workflow_shape.py: |
+        """The requirement."""
+
+        from devforge.core.workflow.spec import WorkflowSpec
+        import pathlib
+        import yaml
+
+
+        def load():
+            raw = yaml.safe_load(pathlib.Path("workflow.yaml").read_text(encoding="utf-8"))
+            return WorkflowSpec.model_validate(raw)
+
+
+        def test_a_lint_verifier_is_defined():
+            spec = load()
+            lint = next((v for v in spec.verifiers if v.id == "lint"), None)
+            assert lint is not None, "no verifier with id 'lint'"
+            assert lint.argv == ["ruff", "check", "."]
+            assert lint.required is True
+
+
+        def test_the_implementation_step_references_it():
+            step = load().step("implementation")
+            assert "lint" in step.verify
+
+
+        def test_nothing_references_an_undefined_verifier():
+            spec = load()
+            assert spec.missing_verifiers(set()) == set()
+    solution:
+      workflow.yaml: |
+        name: shipit
+        version: 1.0.0
+        description: Build something and check it.
+
+        verifiers:
+          - id: tests
+            kind: tests
+            argv: [python, -m, pytest, -q]
+            required: true
+
+          - id: lint
+            kind: lint
+            argv: [ruff, check, .]
+            required: true
+
+        steps:
+          - id: implementation
+            agent: coder
+            skills: [backend]
+            verify: [tests, lint]
+
+          - id: review
+            agent: reviewer
+            skills: [security]
+    guards:
+      - id: existing-shape
+        argv: [python, -m, pytest, -q, tests/test_existing.py]
+    checks:
+      - id: suite
+        argv: [python, -m, pytest, -q]

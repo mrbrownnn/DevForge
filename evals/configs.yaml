@@ -1,0 +1,30 @@
+# Configurations belonging to this repository.
+#
+# These exist to demonstrate the comparison axes on something real, and to be run
+# in CI. They are additive: the shipped configurations (reference, cheat, none,
+# mock-baseline, mock-indexed, claude-code) still apply.
+version: 1
+
+configs:
+  - id: mock-minimal-skills
+    description: The harness with every step restricted to the testing skill.
+    driver: harness
+    runtime: mock
+    skills: [testing]
+    context_strategy: none
+    notes: >
+      Differs from mock-baseline on the skill axis alone. The restriction is real -
+      every step's skill list is narrowed to this set before the run - so the
+      comparison measures withholding skills rather than labelling a run.
+
+  - id: mock-bugfix-everywhere
+    description: The harness running the bugfix workflow over every category.
+    driver: harness
+    runtime: mock
+    workflow: bugfix
+    context_strategy: none
+    notes: >
+      Differs from mock-baseline on the workflow axis alone. Most cases name the
+      feature workflow, so this asks what a debugging-shaped workflow costs when
+      applied to work that is not a defect - which is a question about workflow
+      fit, and one the answer to is expected to be "worse".
