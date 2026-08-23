@@ -10,9 +10,6 @@ one of three kinds.
     Run verifiers only - a checkpoint with no agent.
 ``approval``
     Pause for a human decision at a named gate.
-``falsify``
-    Search adversarially for counterexamples: evidence *against* the change, where
-    verification gathers evidence *for* it. See docs/falsification/.
 
 Verifiers are declared once (in the workflow's ``verifiers:`` block or in the
 project config) and referenced by id from steps, so adding a new check never
@@ -33,7 +30,6 @@ class StepKind(str, Enum):
     AGENT = "agent"
     VERIFY = "verify"
     APPROVAL = "approval"
-    FALSIFY = "falsify"
 
 
 class OnFailure(str, Enum):
@@ -41,22 +37,6 @@ class OnFailure(str, Enum):
 
     FAIL = "fail"  # stop the run (default)
     CONTINUE = "continue"  # record the failure and move on
-
-
-class OnUnsearched(str, Enum):
-    """What a falsify step does when it could not finish, or could not start.
-
-    Deliberately separate from :class:`OnFailure`. "We found a counterexample" and
-    "we could not look properly" are different facts, and a single knob would force
-    them to share a policy. The defaults differ for the same reason: an unfinished
-    search is treated as a failure, because silently passing it is the exact failure
-    mode falsification exists to prevent, while an unavailable strategy continues
-    with the gap recorded, so a project without Hypothesis installed can still run
-    its workflows.
-    """
-
-    FAIL = "fail"
-    CONTINUE = "continue"
 
 
 class VerifierSpec(BaseModel):
@@ -119,29 +99,6 @@ class WorkflowStep(BaseModel):
     # approval steps
     gate: str | None = None
 
-    # -- falsify steps (Phase 13) ----------------------------------------------
-    #: Attack strategies to run, by name. Empty means every strategy applicable to
-    #: the selected targets.
-    strategies: list[str] = Field(default_factory=list)
-    #: What is under attack, from the target registry. Empty means the defaults.
-    targets: list[str] = Field(default_factory=list)
-    #: Resource bounds. Every one is enforced; exhausting one yields INCOMPLETE,
-    #: never a survival.
-    budget: dict[str, Any] = Field(default_factory=dict)
-    #: Per-strategy configuration: properties, relations, differential cases.
-    falsify: dict[str, Any] = Field(default_factory=dict)
-    #: Independent falsifier configuration - runtime, model, context policy. The
-    #: architecture never assumes the coder and the falsifier are the same agent.
-    falsifier: dict[str, Any] = Field(default_factory=dict)
-    #: Explicit strategy order, overriding the cheapest-first default.
-    order: list[str] = Field(default_factory=list)
-    #: How much of the tree may be mutated: diff (default), files, module.
-    scope: str = "diff"
-    #: A search that started and could not finish.
-    on_incomplete: OnUnsearched = OnUnsearched.FAIL
-    #: A search that could not start at all.
-    on_unavailable: OnUnsearched = OnUnsearched.CONTINUE
-
     # -- task graph (Phase 5) --------------------------------------------------
     #: Nodes that must finish before this one starts. Empty means "after the
     #: previous step", so existing sequential workflows are unchanged.
@@ -152,13 +109,8 @@ class WorkflowStep(BaseModel):
     #: Artifacts this step needs. Every one must be produced by some other node.
     consumes: list[str] = Field(default_factory=list)
     #: Guard from a closed vocabulary: always, success(node), failed(node),
-    #: skipped(node), artifact_exists(name), falsification_failed(node),
-    #: falsification_survived(node). Never an evaluated expression.
+    #: skipped(node), artifact_exists(name). Never an evaluated expression.
     when: str = ""
-    #: Mirror of ``when``. The falsification design specified ``condition:``; the
-    #: graph already had ``when:``. Two spellings, one source of truth, mirrored in
-    #: the validator exactly as ``outputs``/``produces`` are.
-    condition: str = ""
 
     on_failure: OnFailure = OnFailure.FAIL
 
@@ -172,29 +124,6 @@ class WorkflowStep(BaseModel):
             raise ValueError(f"step '{self.id}': approval steps take no agent or verifiers")
         if self.kind is StepKind.VERIFY and not self.verify:
             raise ValueError(f"step '{self.id}': verify steps require at least one verifier")
-        if self.kind is not StepKind.FALSIFY:
-            for field in ("strategies", "targets", "budget", "falsify", "falsifier", "order"):
-                if getattr(self, field):
-                    raise ValueError(
-                        f"step '{self.id}': '{field}' is only meaningful on a falsify "
-                        "step; declaring it elsewhere would be silently ignored"
-                    )
-        if self.kind is StepKind.FALSIFY and (self.agent or self.gate):
-            raise ValueError(f"step '{self.id}': falsify steps take no agent or gate")
-        if self.scope not in {"diff", "files", "module"}:
-            raise ValueError(
-                f"step '{self.id}': scope must be one of diff, files, module - got "
-                f"'{self.scope}'"
-            )
-        if self.when and self.condition and self.when != self.condition:
-            raise ValueError(
-                f"step '{self.id}': 'when' and 'condition' are the same guard; "
-                "declaring two different ones is ambiguous - use one"
-            )
-        if self.condition and not self.when:
-            self.when = self.condition
-        elif self.when and not self.condition:
-            self.condition = self.when
         if self.max_attempts < 1:
             raise ValueError(f"step '{self.id}': max_attempts must be >= 1")
         if not self.name:

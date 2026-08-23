@@ -21,7 +21,6 @@ from devforge.cli import (
     context_commands,
     continuous_commands,
     eval_commands,
-    falsify_commands,
     git_commands,
     platform_commands,
     render,
@@ -712,7 +711,6 @@ app.add_typer(supplychain_commands.registry_app, name="registry")
 app.add_typer(skill_commands.skill_app, name="skill")
 app.add_typer(security_commands.app, name="security")
 app.add_typer(eval_commands.app, name="eval")
-app.add_typer(falsify_commands.app, name="falsify")
 app.add_typer(git_commands.app, name="git")
 app.add_typer(continuous_commands.app, name="continuous")
 app.add_typer(platform_commands.app, name="platform")

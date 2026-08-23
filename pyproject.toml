@@ -21,10 +21,6 @@ dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "ruff>=0.5"]
 # Enables devforge.tools.browser. Without it the tool reports unavailable rather
 # than fabricating page content. Also needs: playwright install chromium
 browser = ["playwright>=1.40"]
-# Enables the property-based falsification strategy. Without it that strategy
-# reports unavailable with the reason, and the run records the gap - it never
-# degrades to a weaker search and calls the result a survival.
-falsification = ["hypothesis>=6.0"]
 # Enables the pixel-diff corroboration in devforge.visual.compare. Without it the
 # report says "pixel comparison: not performed" and gives the reason; the
 # structural comparison, which is the primary signal, still runs.

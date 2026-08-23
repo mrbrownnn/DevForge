@@ -72,8 +72,7 @@ class ArtifactSpec(BaseModel):
 
 
 CONDITION_PATTERN = re.compile(
-    r"^(?P<kind>success|failed|skipped|artifact_exists|falsification_failed"
-    r"|falsification_survived|always)"
+    r"^(?P<kind>success|failed|skipped|artifact_exists|always)"
     r"(?:\(\s*(?P<argument>[A-Za-z0-9_.\-/]+)\s*\))?$"
 )
 
@@ -95,8 +94,7 @@ class Condition(BaseModel):
         if not CONDITION_PATTERN.match(self.expression.strip()):
             raise ValueError(
                 f"unsupported condition {self.expression!r}; allowed: always, "
-                "success(node), failed(node), skipped(node), artifact_exists(name), "
-                "falsification_failed(node), falsification_survived(node)"
+                "success(node), failed(node), skipped(node), artifact_exists(name)"
             )
         return self
 
@@ -112,31 +110,12 @@ class Condition(BaseModel):
         assert match is not None
         return match.group("argument")
 
-    def evaluate(
-        self,
-        statuses: dict[str, NodeStatus],
-        artifacts: set[str],
-        falsification: dict[str, str] | None = None,
-    ) -> bool:
-        """Evaluate the guard against what has happened so far.
-
-        ``falsification`` maps a node id to that node's falsification status. It is
-        separate from ``statuses`` because the two answer different questions: a
-        falsify node that found a counterexample did its job correctly *and* failed
-        the step, so ``failed(node)`` and ``falsification_failed(node)`` are not
-        interchangeable and a workflow needs to be able to say which it means.
-        """
+    def evaluate(self, statuses: dict[str, NodeStatus], artifacts: set[str]) -> bool:
         kind, argument = self.kind, self.argument
         if kind == "always":
             return True
         if kind == "artifact_exists":
             return argument in artifacts
-        if kind in {"falsification_failed", "falsification_survived"}:
-            recorded = (falsification or {}).get(argument or "")
-            if recorded is None:
-                return False
-            wanted = "failed" if kind == "falsification_failed" else "survived"
-            return recorded == wanted
         status = statuses.get(argument or "")
         if status is None:
             return False
@@ -195,14 +174,7 @@ class TaskGraph(BaseModel):
             if node.id in node.depends_on:
                 raise ValueError(f"node '{node.id}' depends on itself")
             argument = node.condition.argument
-            checks_node = {
-                "success",
-                "failed",
-                "skipped",
-                "falsification_failed",
-                "falsification_survived",
-            }
-            if node.condition.kind in checks_node and argument not in known:
+            if node.condition.kind in {"success", "failed", "skipped"} and argument not in known:
                 raise ValueError(
                     f"node '{node.id}': condition references unknown node '{argument}'"
                 )
