@@ -1,5 +1,6 @@
 [build-system]
-requires = ["setuptools>=68"]
+# 77+ for PEP 639: an SPDX `license` string plus `license-files`.
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,7 +9,21 @@ version = "0.1.0"
 description = "DevForge - an extensible AI software-engineering harness"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = "MIT"
+# The license text itself ships in the wheel; "MIT" as a string is a claim, the
+# file is the grant. Without it nobody can vendor DevForge at a company.
+license-files = ["LICENSE"]
+authors = [{ name = "Pham Van Thanh" }]
+keywords = ["ai", "agents", "llm", "coding-agent", "orchestration", "verification"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Quality Assurance",
+]
 dependencies = [
     "pydantic>=2.7",
     "typer>=0.12",

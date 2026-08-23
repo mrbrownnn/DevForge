@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A second push to the same branch cancels the first: CI should report the
+# current state of the branch, not queue up answers about older ones.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+
+  test:
+    # DevForge spawns subprocesses, resolves symlinks and writes state files, so
+    # the OS is a real variable. The matrix is the whole point of this job.
+    name: test ${{ matrix.os }} py${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - run: pip install -e ".[dev]"
+      # Every optional extra is a documented degradation path. Installing them
+      # here means the suite exercises the available branch as well as the
+      # "reports unavailable" branch the default install covers.
+      - run: pip install -e ".[falsification,visual]"
+      - name: pytest
+        run: python -m pytest -q
+
+  package:
+    # Guards the thing that silently breaks: builtin YAML/Markdown assets and the
+    # licence are package data, and a wheel missing them installs and then fails
+    # at runtime.
+    name: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install build twine
+      - run: python -m build
+      - run: twine check dist/*
+      - name: wheel carries its assets and licence
+        run: |
+          python - <<'PY'
+          import glob, zipfile
+          wheel = glob.glob("dist/*.whl")[0]
+          names = zipfile.ZipFile(wheel).namelist()
+          required = [
+              "devforge/builtin/workflows/feature.yaml",
+              "devforge/builtin/agents/coder.yaml",
+              "devforge/builtin/runtimes/codex-cli.yaml",
+              "devforge/builtin/skills/backend/SKILL.md",
+              "devforge-0.1.0.dist-info/licenses/LICENSE",
+          ]
+          missing = [r for r in required if r not in names]
+          assert not missing, f"wheel is missing: {missing}"
+          print(f"{wheel}: {len(names)} entries, all required assets present")
+          PY
+      - name: installs clean and runs
+        # Installed from the wheel into an empty venv, in a directory that is not
+        # the source tree - the shape of a real user's first five minutes.
+        run: |
+          python -m venv /tmp/fresh
+          /tmp/fresh/bin/pip install --quiet dist/*.whl
+          mkdir -p /tmp/smoke && cd /tmp/smoke
+          /tmp/fresh/bin/devforge --version
+          /tmp/fresh/bin/devforge init
+          /tmp/fresh/bin/devforge workflows
+          /tmp/fresh/bin/devforge doctor
+          /tmp/fresh/bin/devforge plan --workflow demo --task "smoke test"
