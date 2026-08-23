@@ -1,0 +1,17 @@
+id: windsurf
+name: Windsurf
+description: Rule files under .windsurf/rules.
+confidence: established
+notes: >-
+  Windsurf reads markdown rules from .windsurf/rules. Plain markdown is used
+  rather than a frontmatter block, since the directory itself scopes the rules.
+target:
+  path: .windsurf/rules
+  format: markdown
+  filename: "devforge-{skill}.md"
+  instructions: devforge.md
+global_target:
+  path: .codeium/windsurf/memories
+  format: markdown
+  filename: "devforge-{skill}.md"
+  instructions: devforge.md

@@ -1,0 +1,20 @@
+# Layout: a skills directory of markdown files with frontmatter, which is the
+# same shape DevForge's own skills already use - so this is a copy, not a
+# translation.
+id: claude
+name: Claude Code
+description: Skill files under .claude/skills, one directory entry per skill.
+confidence: established
+notes: >-
+  The skills directory and the frontmatter shape are documented and stable.
+  Project-level files live under .claude/ and global ones under ~/.claude/.
+target:
+  path: .claude/skills
+  format: skill
+  filename: "devforge-{skill}.md"
+  instructions: devforge.md
+global_target:
+  path: .claude/skills
+  format: skill
+  filename: "devforge-{skill}.md"
+  instructions: devforge.md

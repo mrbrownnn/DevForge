@@ -1,0 +1,13 @@
+id: qoder
+name: Qoder
+description: Rule files under .qoder/rules.
+confidence: inferred
+notes: >-
+  Follows the dot-namespace rules-directory convention; not confirmed against
+  published documentation. Correct `target.path` here if Qoder reads from
+  elsewhere.
+target:
+  path: .qoder/rules
+  format: markdown
+  filename: "devforge-{skill}.md"
+  instructions: devforge.md

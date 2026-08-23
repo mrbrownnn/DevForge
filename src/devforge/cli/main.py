@@ -18,6 +18,7 @@ import typer
 
 from devforge import __version__
 from devforge.cli import (
+    assistant_commands,
     context_commands,
     continuous_commands,
     eval_commands,
@@ -105,22 +106,70 @@ def init(
     path: Annotated[Path | None, typer.Argument(help="Project directory.")] = None,
     name: Annotated[str | None, typer.Option("--name", help="Project name.")] = None,
     runtime: Annotated[str, typer.Option("--runtime", help="Default agent runtime.")] = "mock",
+    ai: Annotated[
+        str | None,
+        typer.Option(
+            "--ai",
+            help="Also install DevForge's skills for a coding assistant "
+            "(devforge assistants lists them; 'all' installs every one).",
+        ),
+    ] = None,
     force: Annotated[
-        bool, typer.Option("--force", help="Re-initialise an existing project.")
+        bool, typer.Option("--force", help="Re-initialise, and overwrite existing files.")
+    ] = False,
+    global_install: Annotated[
+        bool,
+        typer.Option("--global", help="Install assistant files into your home directory."),
+    ] = False,
+    offline: Annotated[
+        bool,
+        typer.Option("--offline", help="Compatibility flag; DevForge is always offline."),
+    ] = False,
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Show what would be written, write nothing.")
     ] = False,
 ) -> None:
-    """Create the .devforge project state directory."""
+    """Create the .devforge project state directory, and optionally wire up an assistant."""
     root = (path or Path.cwd()).resolve()
-    try:
-        store = ProjectStore.initialize(root, name=name, default_runtime=runtime, force=force)
-    except DevForgeError as exc:
-        _fail(str(exc))
+
+    if global_install:
+        # A global install touches no project, so requiring one would be an
+        # invented precondition.
+        if ai is None:
+            _fail("--global installs assistant files, so it needs --ai <assistant>")
+        assistant_commands.install_for_assistant(
+            ai, root=root, force=force, global_install=True, offline=offline, dry_run=dry_run
+        )
         return
 
-    config = store.load_config()
-    render.success(f"initialised DevForge project '{config.name}' ({config.project_id})")
-    render.info(f"  state:   {store.devforge_dir}")
-    render.info(f"  runtime: {config.default_runtime}")
+    existing = ProjectStore(root)
+    if existing.initialized and not force:
+        # Re-running init to add an assistant is a normal thing to do, and failing
+        # the whole command because the project already exists would make the
+        # --ai flag unusable on any project that has one.
+        if ai is None:
+            _fail(f"{existing.devforge_dir} already exists (use --force to re-initialise)")
+        store = existing
+        render.info(f"project already initialised at {store.devforge_dir}")
+    else:
+        try:
+            store = ProjectStore.initialize(
+                root, name=name, default_runtime=runtime, force=force
+            )
+        except DevForgeError as exc:
+            _fail(str(exc))
+            return
+        config = store.load_config()
+        render.success(f"initialised DevForge project '{config.name}' ({config.project_id})")
+        render.info(f"  state:   {store.devforge_dir}")
+        render.info(f"  runtime: {config.default_runtime}")
+
+    if ai is not None:
+        render.info("")
+        assistant_commands.install_for_assistant(
+            ai, root=root, force=force, offline=offline, dry_run=dry_run
+        )
+
     render.info(
         "\nNext:\n"
         "  devforge doctor\n"
@@ -128,6 +177,12 @@ def init(
         "\nThe demo workflow completes in any project. The feature workflow runs your real\n"
         "tests, linters and build, so it needs a project that has them."
     )
+    if ai is None:
+        render.info(
+            "\nTo give a coding assistant the same guidance:\n"
+            "  devforge assistants          list what is supported\n"
+            "  devforge init --ai <id>      install its skill files here"
+        )
 
 
 # --------------------------------------------------------------------------- plan
@@ -717,6 +772,9 @@ app.add_typer(git_commands.app, name="git")
 app.add_typer(continuous_commands.app, name="continuous")
 app.add_typer(platform_commands.app, name="platform")
 # Codebase intelligence: build the map, inspect what an agent will be given.
+app.command("assistants")(assistant_commands.assistants_command)
+app.command("versions")(assistant_commands.versions_command)
+app.command("update")(assistant_commands.update_command)
 app.command("index")(context_commands.index_command)
 app.command("context")(context_commands.context_command)
 app.command("context-doctor")(context_commands.doctor_command)

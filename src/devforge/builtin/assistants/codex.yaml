@@ -1,0 +1,19 @@
+# Layout: the agent-instructions file convention, plus a skills directory.
+id: codex
+name: Codex
+description: Skill files under .codex/skills.
+confidence: inferred
+notes: >-
+  Written as a skills directory so each capability stays separate. If your setup
+  reads a single AGENTS.md instead, use the `universal` profile, which writes that
+  convention, or drop an override in .devforge/assistants/.
+target:
+  path: .codex/skills
+  format: skill
+  filename: "devforge-{skill}.md"
+  instructions: devforge.md
+global_target:
+  path: .codex/skills
+  format: skill
+  filename: "devforge-{skill}.md"
+  instructions: devforge.md

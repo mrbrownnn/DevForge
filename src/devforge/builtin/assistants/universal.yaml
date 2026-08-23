@@ -1,0 +1,20 @@
+# The vendor-neutral layout: a skills directory that any assistant following the
+# agent-standard convention can read. This is the profile to prefer when an
+# assistant is not listed, and the one to correct first if a convention changes.
+id: universal
+name: Universal / Agent Standard
+description: Skill files under .agents/skills, plus a root AGENTS.md.
+confidence: established
+notes: >-
+  Writes both halves of the emerging convention: one skill file per capability
+  under .agents/skills, so an assistant can load them selectively.
+target:
+  path: .agents/skills
+  format: skill
+  filename: "devforge-{skill}.md"
+  instructions: devforge.md
+global_target:
+  path: .agents/skills
+  format: skill
+  filename: "devforge-{skill}.md"
+  instructions: devforge.md

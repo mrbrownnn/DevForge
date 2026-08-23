@@ -1,0 +1,12 @@
+id: trae
+name: Trae
+description: Rule files under .trae/rules.
+confidence: inferred
+notes: >-
+  Trae uses a project rules concept under .trae/. The directory name follows that
+  convention but was not confirmed against published documentation.
+target:
+  path: .trae/rules
+  format: markdown
+  filename: "devforge-{skill}.md"
+  instructions: project_rules.md

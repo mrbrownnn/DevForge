@@ -1,0 +1,13 @@
+# Layout: one instructions file that the assistant reads for the whole repository,
+# so every skill is concatenated into it rather than written separately.
+id: copilot
+name: GitHub Copilot
+description: A single repository instructions file at .github/copilot-instructions.md.
+confidence: established
+notes: >-
+  The path is documented and repository-wide. Because it is one file, all skills
+  are concatenated into it; regenerating replaces the whole file, so keep
+  hand-written guidance somewhere else.
+target:
+  path: .github/copilot-instructions.md
+  format: markdown

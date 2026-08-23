@@ -1,0 +1,13 @@
+id: roocode
+name: Roo Code
+description: Rule files under .roo/rules.
+confidence: established
+notes: >-
+  Roo Code reads markdown rules from .roo/rules, with mode-specific directories
+  alongside it. These are written to the general rules directory so they apply in
+  every mode.
+target:
+  path: .roo/rules
+  format: markdown
+  filename: "devforge-{skill}.md"
+  instructions: devforge.md

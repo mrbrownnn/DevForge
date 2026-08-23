@@ -1,0 +1,19 @@
+# Layout: .mdc rule files with a description/globs/alwaysApply frontmatter block.
+id: cursor
+name: Cursor
+description: Rule files under .cursor/rules, in Cursor's .mdc format.
+confidence: established
+notes: >-
+  The .cursor/rules directory and the .mdc frontmatter keys (description, globs,
+  alwaysApply) are documented. Only the instructions file sets alwaysApply so the
+  per-skill rules are pulled in on relevance rather than always.
+target:
+  path: .cursor/rules
+  format: rules
+  filename: "devforge-{skill}.mdc"
+  instructions: devforge.mdc
+global_target:
+  path: .cursor/rules
+  format: rules
+  filename: "devforge-{skill}.mdc"
+  instructions: devforge.mdc

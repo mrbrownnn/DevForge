@@ -1,0 +1,14 @@
+id: antigravity
+name: Antigravity
+description: Rule files under .antigravity/rules.
+confidence: inferred
+notes: >-
+  The directory follows the dot-namespace convention the other assistants use,
+  but was not confirmed against published documentation. Check where Antigravity
+  actually reads project rules from and correct `target.path` here if it differs -
+  no code change is needed.
+target:
+  path: .antigravity/rules
+  format: markdown
+  filename: "devforge-{skill}.md"
+  instructions: devforge.md

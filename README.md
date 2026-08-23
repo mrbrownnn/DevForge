@@ -148,7 +148,10 @@ Full details: [docs/architecture.md](docs/architecture.md).
 
 | Command | Purpose |
 | --- | --- |
-| `devforge init [path]` | Create `.devforge/` project state |
+| `devforge init [path]` | Create `.devforge/` project state (`--ai <assistant>` also installs skills for it) |
+| `devforge assistants` | Coding assistants DevForge can install its skills into |
+| `devforge versions` | What this install contains: workflows, agents, skills, assistants |
+| `devforge update --global` | Refresh globally installed assistant files |
 | `devforge plan -w feature` | Show what a workflow would do; run nothing |
 | `devforge run -w feature -t "..."` | Execute a workflow (`--resume`, `--interactive`, `--events`) |
 | `devforge status [task]` | Run state; `--all` lists runs, `--json` for machines |
@@ -381,6 +384,23 @@ Research: [docs/skill-ecosystem.md](docs/skill-ecosystem.md) ·
 Installing: [docs/security/skills.md](docs/security/skills.md) ·
 Design: [docs/security/skill-supply-chain.md](docs/security/skill-supply-chain.md) ·
 Threats: [docs/security/threat-model.md](docs/security/threat-model.md)
+
+## Coding assistants
+
+DevForge's skills are useful to whatever assistant you already use, not only to the
+agents it drives itself.
+
+```
+devforge assistants                 # 13 supported, plus 'all'
+devforge init --ai cursor           # install into this project
+devforge init --ai all              # every assistant
+devforge init --ai claude --global  # into your home directory
+```
+
+Every assistant is a YAML profile in `builtin/assistants/`, so adding one is a file
+rather than a code change. Five of the thirteen layouts are marked **inferred** -
+they follow convention but were not confirmed against documentation, and the
+installer says so when it writes one. See [docs/assistants.md](docs/assistants.md).
 
 ## Falsification
 

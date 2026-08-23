@@ -1,0 +1,13 @@
+id: kiro
+name: Kiro
+description: Steering documents under .kiro/steering.
+confidence: inferred
+notes: >-
+  Kiro uses a steering-document concept under .kiro/. The directory name here
+  follows that convention but was not confirmed against published documentation.
+  Correct `target.path` if it differs.
+target:
+  path: .kiro/steering
+  format: markdown
+  filename: "devforge-{skill}.md"
+  instructions: devforge.md

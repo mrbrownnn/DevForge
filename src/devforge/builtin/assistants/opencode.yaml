@@ -1,0 +1,14 @@
+id: opencode
+name: OpenCode
+description: A single AGENTS.md at the repository root.
+confidence: established
+notes: >-
+  OpenCode reads the AGENTS.md convention. One file, so every skill is
+  concatenated into it. If you already keep an AGENTS.md by hand, --force will
+  replace it - move your own guidance elsewhere first.
+target:
+  path: AGENTS.md
+  format: markdown
+global_target:
+  path: .config/opencode/AGENTS.md
+  format: markdown

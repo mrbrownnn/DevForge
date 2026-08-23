@@ -1,0 +1,15 @@
+# Layout: a single context file at the repository root, same shape as the other
+# root-level instructions conventions.
+id: gemini
+name: Gemini CLI
+description: A single context file at GEMINI.md.
+confidence: established
+notes: >-
+  The CLI reads a context file from the working directory and upward. Because it
+  is one file, all skills are concatenated into it.
+target:
+  path: GEMINI.md
+  format: markdown
+global_target:
+  path: .gemini/GEMINI.md
+  format: markdown

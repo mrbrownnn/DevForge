@@ -32,6 +32,7 @@ EXPECTED_DOCS = (
     "continuous.md",
     "platform.md",
     "skill-radar.md",
+    "assistants.md",
     "contributing.md",
 )
 
@@ -246,3 +247,22 @@ def test_every_falsification_target_is_documented_somewhere() -> None:
     for target in ("security", "authorization", "behavior", "error_handling"):
         assert target in pages, f"target '{target}' is undocumented"
     assert len(targets.known_targets()) == 10
+
+
+def test_every_assistant_profile_is_documented() -> None:
+    """A supported assistant nobody can discover is not supported."""
+    from devforge.assistants.models import AssistantRegistry
+
+    page = (DOCS / "assistants.md").read_text(encoding="utf-8")
+
+    for profile in AssistantRegistry.discover(None).profiles:
+        assert profile.id in page, f"assistant '{profile.id}' is undocumented"
+
+
+def test_the_assistants_page_marks_the_layouts_it_guessed() -> None:
+    """The claim most likely to be over-read: a written file is not a working one."""
+    page = (DOCS / "assistants.md").read_text(encoding="utf-8")
+
+    assert "inferred" in page
+    assert "was not confirmed against" in page
+    assert "does **not** make an assistant able to drive" in page

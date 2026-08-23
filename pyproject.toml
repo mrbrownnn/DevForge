@@ -40,6 +40,7 @@ where = ["src"]
 "devforge.builtin" = [
     "workflows/*.yaml",
     "agents/*.yaml",
+    "assistants/*.yaml",
     "policies/*.yaml",
     "templates/*.md",
     "skills/*/SKILL.md",
