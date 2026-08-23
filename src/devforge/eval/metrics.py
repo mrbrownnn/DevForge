@@ -294,4 +294,88 @@ def compute_metrics(results: list[CaseResult]) -> Metrics:
         )
     )
 
+    values.extend(_falsification_metrics(attempted, denominator))
+
     return Metrics(values=values)
+
+
+def _falsification_metrics(attempted: list[CaseResult], denominator: str) -> list[MetricValue]:
+    """Metrics for cases that ran a falsify step.
+
+    Absent from a report entirely when no case ran one - an empty section is
+    noise, and a row of "unknown" for a feature nobody used reads as a failure.
+    Where cases *did* run falsification, an unmeasurable value stays ``None`` with
+    its reason, exactly as everywhere else in this module.
+    """
+    falsified = [r for r in attempted if r.falsification_status is not None]
+    if not falsified:
+        return []
+
+    scored = [r for r in falsified if r.mutation_score is not None]
+    mutants = sum(r.valid_mutants or 0 for r in scored)
+    repaired = [r for r in falsified if r.post_repair_survived is not None]
+
+    return [
+        MetricValue(
+            id="mutation_score",
+            label="Mutation score",
+            # Weighted by mutant count, not a mean of means: a case with 40 mutants
+            # and one with 2 are not equal evidence about a test suite.
+            value=(
+                sum((r.mutation_score or 0) * (r.valid_mutants or 0) for r in scored) / mutants
+                if mutants
+                else None
+            ),
+            unit="%",
+            direction=Direction.UP,
+            basis=(
+                f"{mutants} valid non-equivalent mutant(s) across {len(scored)} case(s); "
+                "measures the test suite, not correctness"
+            ),
+            unknown_reason="no valid non-equivalent mutants were generated",
+        ),
+        MetricValue(
+            id="counterexamples_found",
+            label="Counterexamples found",
+            value=float(sum(r.counterexamples_found or 0 for r in falsified)),
+            direction=Direction.NEUTRAL,
+            basis=f"over {len(falsified)} case(s) that ran falsification",
+        ),
+        MetricValue(
+            id="falsification_failure_rate",
+            label="Falsification failure rate",
+            value=_rate(
+                sum(1 for r in falsified if r.falsification_status == "failed"), len(falsified)
+            ),
+            unit="%",
+            direction=Direction.DOWN,
+            basis=f"{len(falsified)} case(s) that ran falsification; {denominator}",
+        ),
+        MetricValue(
+            id="falsification_incomplete_rate",
+            label="Falsification incomplete rate",
+            # Tracked separately from failures on purpose: a search that could not
+            # finish is a gap in the evidence, not evidence of a defect, and
+            # averaging the two together would hide both.
+            value=_rate(
+                sum(
+                    1
+                    for r in falsified
+                    if r.falsification_status in {"incomplete", "unavailable"}
+                ),
+                len(falsified),
+            ),
+            unit="%",
+            direction=Direction.DOWN,
+            basis=f"searches that could not complete or could not start, over {len(falsified)}",
+        ),
+        MetricValue(
+            id="post_repair_survival",
+            label="Post-repair falsification survival",
+            value=_rate(sum(1 for r in repaired if r.post_repair_survived), len(repaired)),
+            unit="%",
+            direction=Direction.UP,
+            basis=f"{len(repaired)} case(s) where falsification was re-run after a repair",
+            unknown_reason="falsification was never re-run after a repair",
+        ),
+    ]

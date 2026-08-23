@@ -231,6 +231,18 @@ class CaseResult(BaseModel):
     interventions: int = 0
     tokens: int | None = None
     cost_usd: float | None = None
+
+    # -- falsification; None means the case ran no falsify step ------------------
+    #
+    # Kept as scalars rather than an embedded report: the evaluation framework
+    # compares runs, and a comparison needs numbers with known denominators, not a
+    # nested document. The full report stays in the run directory.
+    falsification_status: str | None = None
+    mutation_score: float | None = None
+    valid_mutants: int | None = None
+    counterexamples_found: int | None = None
+    #: Whether a re-run after repair found nothing. The lifecycle measurement.
+    post_repair_survived: bool | None = None
     duration_ms: int = 0
 
     @property
