@@ -1,0 +1,16 @@
+id: opencode-cli
+name: OpenCode CLI
+binary: opencode
+description: Drives the OpenCode command-line agent via its run subcommand.
+confidence: verified
+notes: >-
+  Argument vector checked against `opencode run --help` on opencode 1.17.18:
+  `opencode run [message..]` takes the prompt positionally and `-m/--model` selects
+  the model. Note that `-p` on this tool means `--password`, not prompt - which is
+  why the prompt is passed positionally here. A full agent run was not performed.
+subcommand: run
+prompt_style: positional
+model_flag: --model
+version_args: ["--version"]
+output:
+  format: text

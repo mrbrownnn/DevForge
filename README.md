@@ -160,7 +160,7 @@ Full details: [docs/architecture.md](docs/architecture.md).
 | `devforge approve --gate G` | Approve or `--reject` a pending gate |
 | `devforge skills` | List discoverable skills |
 | `devforge workflows` | List available workflows |
-| `devforge runtimes` | List agent runtimes and their availability |
+| `devforge runtimes` | List agent runtimes and their availability (6 providers, profile-driven) |
 | `devforge doctor` | Environment check: what works, what is unavailable |
 | `devforge bench` | Repair success rate against the seeded-defect benchmark (`--solver reference\|cheat\|none`) |
 | `devforge index` | Build the codebase index (structure only, no file contents) |

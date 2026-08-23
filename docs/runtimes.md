@@ -111,3 +111,55 @@ Then `devforge run --runtime my-runtime`, and `devforge runtimes` /
 - [ ] Nothing vendor-specific leaks into `AgentResult` beyond `metadata`.
 - [ ] Repair mode is handled: `invocation.mode` and the diagnostics already in the
       prompt are the contract for a second attempt.
+
+## External CLI runtimes
+
+DevForge executes agents by spawning a command-line tool, never by calling an HTTP
+API - it imports no HTTP client, and `tests/test_architecture.py` enforces that. So
+"adding a provider" means describing its CLI, not adding an API key.
+
+Most providers need no Python at all. `ExternalCliRuntime` is one adapter driven by a
+profile in `builtin/runtimes/*.yaml`:
+
+```yaml
+id: codex-cli
+name: Codex CLI
+binary: codex
+confidence: verified
+subcommand: exec
+prompt_style: positional     # positional | flag | stdin
+model_flag: --model
+output:
+  format: text               # text | json
+```
+
+Drop a file in `.devforge/runtimes/` to override a bundled profile for one project.
+A profile never shadows a hand-written adapter: a real adapter knows things a profile
+cannot express, and silently replacing it would be a downgrade.
+
+### What ships
+
+| runtime | binary | invocation shape |
+| --- | --- | --- |
+| `claude-code` | `claude` | hand-written adapter |
+| `codex-cli` | `codex` | **verified** against `codex exec --help` |
+| `opencode-cli` | `opencode` | **verified** against `opencode run --help` |
+| `gemini-cli` | `gemini` | documented, not checked here |
+| `cursor-agent` | `cursor-agent` | **inferred** |
+| `copilot-cli` | `copilot` | **inferred** |
+
+`verified` means the argument vector was checked against a real installation's own
+`--help`, with the version recorded in the profile. It does **not** mean a full agent
+run was performed - that bills a model and edits files, so it is the user's call.
+
+`devforge runtimes` shows which binaries are actually present. An unverified profile
+says so in its availability detail, because a wrong flag produces an error message
+from someone else's binary and reads as DevForge being broken.
+
+### Editors have no runtime
+
+Windsurf, Antigravity, Kiro, Qoder, Trae and Roo Code are editors or editor
+extensions, not headless CLIs. There is nothing to spawn, so they ship an assistant
+profile (`devforge init --ai <id>`, see [assistants.md](assistants.md)) and no
+runtime. Shipping a runtime that could never start would be worse than not shipping
+one.

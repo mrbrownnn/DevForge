@@ -27,7 +27,27 @@ class RuntimeRegistry(Registry[RuntimeFactory]):
         registry = cls()
         registry.register(MockAgentRuntime.name, MockAgentRuntime)
         registry.register(ClaudeCodeRuntime.name, ClaudeCodeRuntime)
+        registry.register_profiles()
         return registry
+
+    def register_profiles(self, project_root: object = None) -> list[str]:
+        """Register every external CLI described by a runtime profile.
+
+        Profiles are YAML (``builtin/runtimes/``, overridable from
+        ``.devforge/runtimes/``), so a new provider is a file rather than a class.
+        A profile whose id is already taken does not replace the built-in adapter:
+        a hand-written adapter knows things a profile cannot express, and silently
+        shadowing it would be a downgrade nobody asked for.
+        """
+        from devforge.runtime.external import runtime_factories
+
+        added: list[str] = []
+        for name, factory in runtime_factories(project_root).items():
+            if name in self:
+                continue
+            self.register(name, factory)
+            added.append(name)
+        return added
 
     def create(self, name: str) -> AgentRuntime:
         return self.get(name)()

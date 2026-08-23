@@ -1,0 +1,18 @@
+# The editor itself is not scriptable, but its agent ships as a separate binary
+# that takes a prompt non-interactively.
+id: cursor-agent
+name: Cursor Agent CLI
+binary: cursor-agent
+description: Drives the Cursor agent binary in print mode.
+confidence: inferred
+notes: >-
+  The binary name and prompt flag follow the convention the other agent CLIs use
+  and were NOT confirmed against documentation. Check `cursor-agent --help` before
+  relying on this, and override in .devforge/runtimes/ if it differs. The Cursor
+  editor itself cannot be driven headlessly; this profile is for the separate CLI.
+prompt_style: flag
+prompt_flag: "-p"
+model_flag: --model
+version_args: ["--version"]
+output:
+  format: text

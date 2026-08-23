@@ -1,0 +1,20 @@
+# Non-interactive execution mode: a subcommand, then the prompt as a positional
+# argument. Checked against a real installation - see notes.
+id: codex-cli
+name: Codex CLI
+binary: codex
+description: Drives the Codex command-line agent in non-interactive mode.
+confidence: verified
+notes: >-
+  Argument vector checked against `codex exec --help` on codex-cli 0.144.3:
+  `codex exec [OPTIONS] [PROMPT]` takes the prompt positionally and `-m/--model`
+  selects the model. A full agent run was not performed - that bills a model and
+  edits files, so it is your call. The tool also offers `--json` for JSONL events;
+  this profile reads its normal text output instead, which is the stabler surface.
+subcommand: exec
+prompt_style: positional
+system_prompt_flag: ""
+model_flag: --model
+version_args: ["--version"]
+output:
+  format: text

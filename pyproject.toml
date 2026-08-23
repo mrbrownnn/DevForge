@@ -41,6 +41,7 @@ where = ["src"]
     "workflows/*.yaml",
     "agents/*.yaml",
     "assistants/*.yaml",
+    "runtimes/*.yaml",
     "policies/*.yaml",
     "templates/*.md",
     "skills/*/SKILL.md",

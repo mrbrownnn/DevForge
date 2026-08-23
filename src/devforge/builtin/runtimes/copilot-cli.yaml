@@ -1,0 +1,17 @@
+id: copilot-cli
+name: GitHub Copilot CLI
+binary: copilot
+description: Drives the Copilot command-line agent in programmatic mode.
+confidence: inferred
+notes: >-
+  The standalone Copilot CLI is newer than the `gh copilot` extension, and the
+  prompt flag here follows the convention of the other agent CLIs rather than
+  confirmed documentation. Check `copilot --help`. Note the older `gh copilot`
+  extension suggests and explains commands; it does not edit files, so it is not
+  usable as a DevForge runtime.
+prompt_style: flag
+prompt_flag: "-p"
+model_flag: --model
+version_args: ["--version"]
+output:
+  format: text

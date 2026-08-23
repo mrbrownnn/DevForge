@@ -230,12 +230,13 @@ async def test_claude_runtime_execute_refuses_without_binary(tmp_path: Path) -> 
 
 
 def test_runtime_registry_defaults_and_construction() -> None:
+    """The two hand-written adapters, plus whatever CLI profiles are bundled."""
     registry = RuntimeRegistry.default()
 
-    assert registry.names() == ["claude-code", "mock"]
+    assert {"claude-code", "mock"} <= set(registry.names())
     assert isinstance(registry.create("mock"), MockAgentRuntime)
     assert isinstance(registry.create("mock"), AgentRuntime)
-    with pytest.raises(RegistryError, match="Available: claude-code, mock"):
+    with pytest.raises(RegistryError, match="unknown runtime"):
         registry.create("gpt-whatever")
 
 

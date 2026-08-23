@@ -1,0 +1,17 @@
+# Single-shot prompt mode: the prompt goes behind a flag and the answer comes back
+# on stdout.
+id: gemini-cli
+name: Gemini CLI
+binary: gemini
+description: Drives the Gemini command-line agent in single-prompt mode.
+confidence: documented
+notes: >-
+  Taken from the tool's documented non-interactive prompt flag; not exercised by
+  DevForge on this machine. Verify with `gemini --help` and override in
+  .devforge/runtimes/ if your version differs.
+prompt_style: flag
+prompt_flag: "-p"
+model_flag: --model
+version_args: ["--version"]
+output:
+  format: text
