@@ -130,3 +130,40 @@ devforge run --resume task_ab12cd34
 
 Steps already marked `passed` are skipped, so no agent work and no billed call is
 repeated.
+
+## `kind: falsify`
+
+A fourth step kind. Where a `verify` step gathers evidence *for* a change, a `falsify`
+step searches for evidence *against* it: mutants the tests fail to detect, inputs that
+violate a declared invariant, tests an adversarial agent writes to break it.
+
+```yaml
+- id: falsify
+  kind: falsify
+  strategies: [mutation, property, adversarial]
+  targets: [behavior, boundary_conditions, error_handling]
+  scope: diff
+  budget:
+    max_duration_s: 600
+    max_mutants: 50
+    max_agent_invocations: 5
+    flakiness_probes: 2
+  on_incomplete: fail        # an unfinished search is not a pass
+  on_unavailable: continue   # a missing dependency is recorded, not fatal
+```
+
+Two conditions are available to downstream steps, and they are not interchangeable
+with `success`/`failed`: a falsify step that finds a counterexample worked correctly.
+
+```yaml
+- id: repair
+  agent: coder
+  condition: falsification_failed(falsify)
+```
+
+`falsification_survived(node)` is the complement. `condition:` and `when:` are the same
+guard - two spellings, mirrored, exactly as `outputs`/`produces` are.
+
+The built-in `falsify` workflow demonstrates the full loop, including a `re-falsify`
+step that measures post-repair survival. See
+[docs/falsification/architecture.md](falsification/architecture.md).

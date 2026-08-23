@@ -203,3 +203,16 @@ harder and a specific set of actions visible, and claiming more than that would
 undo the value of stating it honestly.
 
 See [security/security-center.md](security/security-center.md).
+
+## Falsification
+
+The falsification subsystem (`docs/falsification/security.md`) executes code that a
+model wrote, against a repository that may be hostile. It is treated as untrusted
+and reuses every control described above - the command allowlist, path confinement,
+per-agent narrowing, redaction and untrusted-content fencing - plus two of its own:
+runs happen in an isolated worktree or copy and refuse rather than downgrade when
+neither is available, and the falsifier's write scope is enforced by a content-hash
+filesystem snapshot rather than by an instruction in a prompt.
+
+The same limitation applies there as everywhere else here: isolation means the
+user's files are not touched. It is not an OS-level sandbox.
