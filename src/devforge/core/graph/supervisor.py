@@ -124,11 +124,11 @@ class Supervisor:
 
         for depth, level in enumerate(levels):
             report.levels_run = depth + 1
-            runnable = [node for node in level if self._should_run(node, report, artifacts)]
+            runnable = [node for node in level if self._should_run(node, task, report, artifacts)]
 
             for node in level:
                 if node not in runnable and node.id not in report.outcomes:
-                    report.outcomes[node.id] = self._skip(node, report, artifacts)
+                    report.outcomes[node.id] = self._skip(node, task, report, artifacts)
 
             if not runnable:
                 continue
@@ -178,11 +178,14 @@ class Supervisor:
 
     # -- node lifecycle ---------------------------------------------------------
 
-    def _should_run(self, node: TaskNode, report: GraphRunReport, artifacts: ArtifactStore) -> bool:
-        record = self.store  # noqa: F841 - keeps the intent explicit below
+    def _should_run(
+        self, node: TaskNode, task: Task, report: GraphRunReport, artifacts: ArtifactStore
+    ) -> bool:
         if node.id in report.outcomes:
             return False
-        if not node.condition.evaluate(report.statuses, artifacts.available):
+        if not node.condition.evaluate(
+            report.statuses, artifacts.available, _falsification_verdicts(task)
+        ):
             return False
         # A dependency that did not pass means this node would run on stale or absent
         # inputs. Blocking is the honest outcome; running anyway invents a result.
@@ -193,7 +196,7 @@ class Supervisor:
         return True
 
     def _skip(
-        self, node: TaskNode, report: GraphRunReport, artifacts: ArtifactStore
+        self, node: TaskNode, task: Task, report: GraphRunReport, artifacts: ArtifactStore
     ) -> NodeOutcome:
         blocked_parents = [
             parent
@@ -203,7 +206,9 @@ class Supervisor:
         if blocked_parents:
             reason = f"blocked: dependency {blocked_parents} did not pass"
             status = NodeStatus.BLOCKED
-        elif not node.condition.evaluate(report.statuses, artifacts.available):
+        elif not node.condition.evaluate(
+            report.statuses, artifacts.available, _falsification_verdicts(task)
+        ):
             reason = f"condition '{node.condition.expression}' was not met"
             status = NodeStatus.SKIPPED
         else:
@@ -403,3 +408,17 @@ def graph_summary(report: GraphRunReport) -> str:
 
 def workspace_of(store) -> Path:
     return Path(store.root)
+
+
+def _falsification_verdicts(task) -> dict[str, str]:
+    """Falsify verdicts by step id, for the two falsification conditions.
+
+    Read from the task record rather than tracked separately: the orchestrator
+    already persists the verdict there after every falsify step, and a second copy
+    would be one more thing that can disagree.
+    """
+    return {
+        record.step_id: record.falsification
+        for record in getattr(task, "steps", [])
+        if getattr(record, "falsification", "")
+    }

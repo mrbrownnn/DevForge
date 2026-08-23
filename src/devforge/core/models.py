@@ -249,6 +249,12 @@ class StepRecord(_Model):
     started_at: datetime | None = None
     finished_at: datetime | None = None
     error: str = ""
+    #: Verdict of a falsify step: failed, survived, incomplete, unavailable, error.
+    #: Recorded rather than derived from ``status`` because the two differ - a
+    #: falsify step that finds a counterexample worked correctly and failed the step.
+    falsification: str = ""
+    #: Where the full report was persisted, so a finding stays explainable later.
+    falsification_run_id: str = ""
 
     @property
     def attempt_count(self) -> int:
