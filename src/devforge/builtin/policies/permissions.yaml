@@ -42,6 +42,20 @@ shell:
     - "git add*"
     - "git commit*"
 
+    # --- falsification -------------------------------------------------------
+    #
+    # The falsifier runs the project's tests, many times, against mutated code. It
+    # needs the test runners and nothing else: it has no shell of its own
+    # (allow_shell: false in builtin/agents/falsifier.yaml) and writes only its
+    # scratch directory. Each entry below is a test runner, not a general command.
+    - "python -m pytest*"
+    - "python -m hypothesis*"
+    # Worktree management for the isolated sandbox. `worktree add` creates a second
+    # checkout of a ref that already exists; it fetches nothing and runs nothing.
+    - "git worktree list*"
+    - "git worktree add*"
+    - "git worktree remove*"
+
   # Destructive but sometimes legitimate: a human must approve each one.
   require_approval:
     # Skill installation fetches source with git. It reaches the network and brings
