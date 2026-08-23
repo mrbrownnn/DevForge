@@ -208,3 +208,18 @@ Each rejection in [principles.md](principles.md) has a trigger:
 | Sequential steps | A workflow has genuinely independent branches worth parallelising |
 
 Until a trigger fires, the simpler design is the correct one.
+
+## Falsification
+
+`devforge/falsification/` is a peer of `devforge/verification/`, not a replacement.
+Verification answers *do the declared checks pass?*; falsification answers *can a
+counterexample be found?* Both report to the orchestrator, which records both rather
+than collapsing them into a verdict.
+
+It reuses the existing layers rather than duplicating them: `tools/process.py` to run
+commands, `policy/engine.py` to decide whether they may run, `vcs/worktree.py` for
+isolation, `observability/logging.py` for events, `observability/redaction.py` for
+secrets, `tools/untrusted.py` for repository content, and `core/state/store.py` for
+persistence. The only new infrastructure is the strategy interface and the corpus.
+
+See [falsification/architecture.md](falsification/architecture.md).

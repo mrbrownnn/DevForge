@@ -35,6 +35,24 @@ EXPECTED_DOCS = (
     "contributing.md",
 )
 
+#: The falsification pages. Separate because the whole set has to exist together:
+#: a subsystem that documents its strategies but not its limits is worse than one
+#: that documents neither.
+FALSIFICATION_DOCS = (
+    "architecture.md",
+    "integration-plan.md",
+    "strategies.md",
+    "mutation.md",
+    "property-testing.md",
+    "adversarial-testing.md",
+    "differential-testing.md",
+    "metamorphic-testing.md",
+    "counterexamples.md",
+    "metrics.md",
+    "security.md",
+    "limitations.md",
+)
+
 
 def cli_group_names() -> list[str]:
     """Names of the registered sub-apps (`devforge security`, `skill`, ...)."""
@@ -179,3 +197,52 @@ def test_mcp_security_model_is_documented() -> None:
     assert "not implemented" in mcp.lower()
     for claim in ("stdio", "allow_tools", "sampling"):
         assert claim in mcp
+
+
+def test_falsification_pages_exist() -> None:
+    missing = [
+        name for name in FALSIFICATION_DOCS if not (DOCS / "falsification" / name).is_file()
+    ]
+    assert not missing, f"missing falsification documentation: {missing}"
+
+
+def test_falsification_never_claims_to_prove_correctness() -> None:
+    """The one claim this subsystem must never make, in the page that exists to deny it."""
+    page = (DOCS / "falsification" / "limitations.md").read_text(encoding="utf-8")
+
+    assert "does not prove correctness" in page
+    assert "never collapse into" in page
+    assert "not an os-level sandbox" in (
+        DOCS / "falsification" / "security.md"
+    ).read_text(encoding="utf-8").lower()
+
+
+def test_the_mutation_score_is_documented_as_a_statement_about_tests() -> None:
+    page = (DOCS / "falsification" / "metrics.md").read_text(encoding="utf-8")
+
+    assert "detected by the test suite" in page
+    assert "94% correct" in page, "the page must show the phrasing it forbids"
+    assert "never measures correctness" in page or "None of them measures correctness" in page
+
+
+def test_every_shipped_strategy_is_documented() -> None:
+    from devforge.falsification.strategies.base import StrategyRegistry
+
+    page = (DOCS / "falsification" / "strategies.md").read_text(encoding="utf-8")
+
+    for name in StrategyRegistry.default().names():
+        assert name in page, f"strategy '{name}' is undocumented"
+
+
+def test_every_falsification_target_is_documented_somewhere() -> None:
+    """Including the six nothing attacks yet - an invisible gap cannot be planned against."""
+    from devforge.falsification import targets
+
+    pages = "\n".join(
+        (DOCS / "falsification" / name).read_text(encoding="utf-8")
+        for name in ("metrics.md", "strategies.md", "limitations.md")
+    )
+
+    for target in ("security", "authorization", "behavior", "error_handling"):
+        assert target in pages, f"target '{target}' is undocumented"
+    assert len(targets.known_targets()) == 10

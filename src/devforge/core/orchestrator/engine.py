@@ -6,6 +6,7 @@ One loop drives every workflow::
         agent step   -> invoke -> verify -> (repair -> verify)* up to max_attempts
         verify step  -> verify only
         approval step-> request a human decision, pause if it is not yet given
+        falsify step -> search adversarially for counterexamples
 
 Design constraints this file deliberately respects:
 
@@ -13,6 +14,10 @@ Design constraints this file deliberately respects:
   interfaces, all injected through :class:`Orchestrator` construction.
 * It never trusts an agent's own report of success. ``AgentResult.ok`` only means
   the runtime worked; passing a step requires the verifiers to agree.
+* Verification and falsification are independent evidence sources, not one
+  pipeline. Verification gathers evidence *for* a change; falsification searches
+  for evidence *against* it. Neither is correctness, and the orchestrator records
+  both rather than collapsing them into a single verdict.
 * It persists after every attempt, so a crashed or interrupted process resumes
   rather than restarts.
 """
@@ -29,6 +34,7 @@ from devforge.core.errors import DevForgeError
 from devforge.core.execution import ExecutionContext
 from devforge.core.models import (
     ApprovalStatus,
+    Artifact,
     StepAttempt,
     StepRecord,
     StepStatus,
@@ -40,6 +46,7 @@ from devforge.core.models import (
 from devforge.core.registry.skills import SkillRegistry
 from devforge.core.state.store import ProjectStore
 from devforge.core.workflow.spec import OnFailure, StepKind, WorkflowSpec, WorkflowStep
+from devforge.falsification.models import FalsificationStatus
 from devforge.observability.logging import RunLogger
 from devforge.policy.engine import PolicyEngine
 from devforge.runtime.base import AgentRuntime
@@ -64,6 +71,7 @@ class Orchestrator:
         logger: RunLogger,
         workspace: Path | None = None,
         skill_registry: object | None = None,
+        falsification: object | None = None,
     ) -> None:
         self.store = store
         self.runtime = runtime
@@ -77,6 +85,10 @@ class Orchestrator:
         self.workspace = Path(workspace or store.root)
         # Registry of reviewed third-party sources; only external skills need it.
         self.skill_registry = skill_registry
+        # Optional, and defaulted so every existing construction keeps working. A
+        # falsify step with no engine fails the step with a stated reason - it must
+        # never pass by omission, which would make the check vanish silently.
+        self.falsification = falsification
 
     # -- entry point ------------------------------------------------------------
 
@@ -177,6 +189,9 @@ class Orchestrator:
 
         if step.kind is StepKind.APPROVAL:
             return self._run_approval_step(task, step, record, logger)
+
+        if step.kind is StepKind.FALSIFY:
+            return await self._run_falsify_step(task, step, record, logger)
 
         unavailable = self.tools.unavailable_names(step.tools)
         if unavailable:
@@ -308,6 +323,145 @@ class Orchestrator:
                 f"Approve with: devforge approve --gate {approval.gate}"
             ),
         )
+
+    async def _run_falsify_step(
+        self, task: Task, step: WorkflowStep, record: StepRecord, logger: RunLogger
+    ) -> TaskResult | None:
+        """Search for counterexamples, and record what the search actually covered.
+
+        The engine returns a report; this decides what the report means for the run.
+        The two are separate because "a counterexample exists" and "this step fails"
+        are different judgements, and only the second belongs to the workflow.
+        """
+        from devforge.core.workflow.spec import OnUnsearched
+
+        if self.falsification is None:
+            return self._finish_failed_step(
+                task,
+                step,
+                record,
+                "this workflow declares a falsify step but no falsification engine "
+                "was configured; refusing to pass a check that did not run",
+                logger,
+            )
+
+        attempt = StepAttempt(attempt=1)
+        record.attempts.append(attempt)
+
+        patch = await self._collect_patch(logger)
+        report = await self._falsify(task, step, patch, logger)
+
+        record.falsification = report.status.value
+        record.falsification_run_id = report.run_id
+        attempt.finished_at = utcnow()
+
+        artifact_path = self._persist_falsification(task, report, logger)
+        if artifact_path:
+            task.artifacts.append(
+                Artifact(
+                    path=artifact_path,
+                    kind="falsification-report",
+                    description=report.headline(),
+                    step_id=step.id,
+                )
+            )
+
+        status = report.status
+        logger.info(
+            "falsification.step",
+            status=status.value,
+            confidence=report.confidence.value,
+            counterexamples=len(report.counterexamples),
+            weaknesses=len(report.weaknesses),
+            mutation_score=report.mutation_score,
+        )
+
+        if status is FalsificationStatus.FAILED:
+            attempt.status = StepStatus.FAILED
+            reason = (
+                f"falsification found {len(report.counterexamples)} counterexample(s) "
+                f"and {len(report.weaknesses)} test weakness(es); see {artifact_path}"
+            )
+            return self._finish_failed_step(task, step, record, reason, logger)
+
+        if status in {FalsificationStatus.INCOMPLETE, FalsificationStatus.ERROR}:
+            if step.on_incomplete is OnUnsearched.FAIL:
+                attempt.status = StepStatus.FAILED
+                return self._finish_failed_step(
+                    task,
+                    step,
+                    record,
+                    f"the falsification search did not complete ({status.value}): "
+                    f"{'; '.join(report.limitations[:2])}",
+                    logger,
+                )
+            logger.warn("falsification.incomplete", continued=True, status=status.value)
+
+        if status is FalsificationStatus.UNAVAILABLE and step.on_unavailable is OnUnsearched.FAIL:
+            attempt.status = StepStatus.FAILED
+            return self._finish_failed_step(
+                task,
+                step,
+                record,
+                f"falsification could not run: {'; '.join(report.limitations[:2])}",
+                logger,
+            )
+
+        attempt.status = StepStatus.PASSED
+        record.status = StepStatus.PASSED
+        record.finished_at = utcnow()
+        self.store.save_task(task)
+        logger.info(
+            "step.finish",
+            status="passed",
+            falsification=status.value,
+            confidence=report.confidence.value,
+            note="no counterexample was found within the configured search space",
+        )
+        return None
+
+    async def _falsify(self, task: Task, step: WorkflowStep, patch, logger: RunLogger):
+        from devforge.falsification.models import Budget, MutationScope
+
+        return await self.falsification.run(
+            source_root=self.workspace,
+            policy=self.policy,
+            strategies=step.strategies or None,
+            target_names=step.targets or None,
+            budget=Budget.model_validate(step.budget) if step.budget else Budget(),
+            config={**step.falsify, "lines": patch.lines},
+            diff=patch.diff,
+            changed_files=patch.files,
+            scope=MutationScope(step.scope),
+            task_id=task.task_id,
+            step_id=step.id,
+            logger=logger,
+            order=step.order or None,
+        )
+
+    async def _collect_patch(self, logger: RunLogger):
+        """The change under attack.
+
+        Delegated to the falsification layer: reading a diff means running git, and
+        core depends on interfaces rather than on how a subprocess is spawned.
+        """
+        from devforge.falsification.patch import collect_patch
+
+        return await collect_patch(self.workspace, self.policy, logger=logger)
+
+    def _persist_falsification(self, task: Task, report, logger: RunLogger) -> str:
+        from devforge.falsification.store import record_corpus, save_report
+
+        try:
+            path = save_report(self.store, report)
+            record_corpus(self.store, report)
+        except OSError as exc:  # pragma: no cover - disk failure
+            logger.warn("falsification.persist_failed", error=str(exc))
+            return ""
+        try:
+            return path.relative_to(self.store.root).as_posix()
+        except ValueError:  # pragma: no cover - report outside the project
+            return str(path)
 
     # -- helpers ----------------------------------------------------------------
 

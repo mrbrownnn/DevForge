@@ -183,6 +183,11 @@ Full details: [docs/architecture.md](docs/architecture.md).
 | `devforge eval report` | Render a saved evaluation report as Markdown |
 | `devforge eval cases` | The benchmark cases that apply here |
 | `devforge eval configs` | The evaluation configurations that apply here |
+| `devforge falsify` | Search adversarially for counterexamples against the current patch |
+| `devforge falsify report` | Show a persisted falsification report |
+| `devforge falsify explain <id>` | Explain one finding, with `--regression` to print a test |
+| `devforge falsify list` | Persisted falsification runs, newest first |
+| `devforge falsify corpus` | Counterexamples preserved across runs |
 | `devforge git worktree` | Create, list and remove isolated worktrees |
 | `devforge git commit` | Plan a commit, screen its contents, then record it |
 | `devforge git pr` | Write the pull-request artifact (does not push) |
@@ -377,6 +382,48 @@ Installing: [docs/security/skills.md](docs/security/skills.md) ·
 Design: [docs/security/skill-supply-chain.md](docs/security/skill-supply-chain.md) ·
 Threats: [docs/security/threat-model.md](docs/security/threat-model.md)
 
+## Falsification
+
+Verification is confirmation-shaped: it runs the checks the workflow already named, so
+it can ask *do these checks pass?* and never *are these checks sufficient?* Falsification
+fills that gap by searching for evidence **against** a change.
+
+```
+implement -> verify -> falsify -+-> survives -> confidence (with stated limits)
+                                +-> broken   -> repair -> verify -> falsify -> ...
+```
+
+```yaml
+- id: falsify
+  kind: falsify
+  strategies: [mutation, property, adversarial, differential, metamorphic]
+  targets: [behavior, boundary_conditions, error_handling]
+  budget:
+    max_duration_s: 600
+    max_mutants: 50
+    flakiness_probes: 2
+  on_incomplete: fail
+  on_unavailable: continue
+
+- id: repair
+  agent: coder
+  condition: falsification_failed(falsify)
+```
+
+Five strategies ship: mutation testing over the patch, property-based testing,
+an adversarial test agent, differential testing, and metamorphic testing. Every run
+happens in an isolated git worktree; the user's working tree is never mutated.
+
+**Falsification does not prove correctness.** Surviving it means no counterexample was
+found within the configured search space, with the budget that was actually spent. A
+mutation score is a statement about the *test suite* - reported as "94% of valid
+generated mutants were detected", never as "94% correct". `UNAVAILABLE` and
+`INCOMPLETE` are never treated as success, and there is no `SUCCESS` state in the
+vocabulary at all. See [docs/falsification/](docs/falsification/limitations.md).
+
+Falsification is opt-in: the `feature` workflow is unchanged, and a workflow without a
+`falsify` step behaves exactly as before.
+
 ## Current limitations
 
 Stated plainly, because a harness that hides its gaps is worse than useless:
@@ -393,6 +440,13 @@ Stated plainly, because a harness that hides its gaps is worse than useless:
   needs the `visual` extra (Pillow + numpy) to be computed at all. A passing report
   never claims pixel-perfect reproduction, and states what it could not check. See
   [docs/browser.md](docs/browser.md).
+- **Falsification searches; it does not prove.** Mutation is scoped to the lines the
+  patch touched, so a pre-existing defect in unchanged code will not be found.
+  Property invariants and metamorphic relations are declared, never inferred. Six of
+  the ten attack targets ship with no strategy attacking them and honestly report 0%
+  coverage. Property testing needs Hypothesis
+  (`pip install "devforge[falsification]"`) and reports `unavailable` without it,
+  never a survival. See [docs/falsification/limitations.md](docs/falsification/limitations.md).
 - **The clone workflow needs configuring.** The built-in ships without a reference URL,
   because the target is task-specific; copy it to `workflows/clone.yaml` and set one.
 - **The patch guard catches known cheating patterns, not all of them.** It reads the

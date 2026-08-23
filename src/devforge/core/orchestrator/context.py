@@ -16,6 +16,7 @@ from devforge.core.orchestrator.engine import Orchestrator
 from devforge.core.registry.skills import SkillRegistry
 from devforge.core.state.store import ProjectConfig, ProjectStore
 from devforge.core.workflow.loader import WorkflowLoader
+from devforge.falsification.engine import FalsificationEngine
 from devforge.observability.logging import EventSink, RunLogger, jsonl_sink
 from devforge.policy.engine import PolicyEngine
 from devforge.runtime.base import AgentRuntime
@@ -37,6 +38,7 @@ class AppContext:
     tools: ToolRegistry
     runtimes: RuntimeRegistry
     verification: VerificationEngine
+    falsification: FalsificationEngine
     logger: RunLogger
 
     @classmethod
@@ -58,6 +60,7 @@ class AppContext:
             tools=ToolRegistry.default(),
             runtimes=RuntimeRegistry.default(),
             verification=VerificationEngine(),
+            falsification=FalsificationEngine(),
             logger=RunLogger(list(extra_sinks or []), project_id=config.project_id),
         )
 
@@ -88,6 +91,7 @@ class AppContext:
             skills=self.skills,
             agents=self.agents,
             verification=self.verification,
+            falsification=self.falsification,
             approvals=ApprovalGate(self.policy, prompter=prompter),
             policy=self.policy,
             logger=logger,

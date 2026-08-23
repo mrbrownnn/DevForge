@@ -1,0 +1,107 @@
+name: falsify
+version: 1.0.0
+description: >
+  Implement, verify, then attack. Verification gathers evidence for the change;
+  falsification searches for evidence against it. Neither is proof of correctness.
+tags: [falsification]
+
+# Falsification is opt-in. The `feature` workflow is deliberately unchanged, so
+# existing projects behave exactly as before until they choose this one.
+
+verifiers:
+  - id: tests
+    kind: tests
+    description: Project unit test suite
+    argv: [python, -m, pytest, -q]
+    timeout_s: 900
+    required: true
+  - id: lint
+    kind: lint
+    description: Static lint pass
+    argv: [ruff, check, .]
+    timeout_s: 300
+    required: false
+
+steps:
+  - id: implementation
+    name: Implementation
+    agent: coder
+    skills: [backend, debugging]
+    tools: [filesystem, shell, git]
+    verify: [lint]
+    max_attempts: 3
+    description: Implement the change.
+
+  - id: verify
+    name: Verification
+    kind: verify
+    verify: [tests, lint]
+    description: >
+      Evidence FOR the change: do the declared checks pass? A pass here means the
+      checks agreed, not that the change is correct.
+
+  - id: falsify
+    name: Falsification
+    kind: falsify
+    description: >
+      Evidence AGAINST the change: can a counterexample be found? A survival here
+      means none was found in the configured search space - not that none exists.
+
+    strategies:
+      - mutation
+      - property
+      - adversarial
+
+    targets:
+      - behavior
+      - boundary_conditions
+      - error_handling
+
+    scope: diff
+
+    budget:
+      max_duration_s: 600
+      max_mutants: 50
+      max_property_examples: 1000
+      max_adversarial_tests: 20
+      max_agent_invocations: 5
+      flakiness_probes: 2
+
+    # An unfinished search fails: silently passing one is the failure mode this
+    # whole step exists to prevent. An unavailable strategy continues with the gap
+    # recorded, so a project without Hypothesis can still run this workflow.
+    on_incomplete: fail
+    on_unavailable: continue
+
+  - id: repair
+    name: Repair
+    agent: coder
+    skills: [debugging, backend]
+    tools: [filesystem, shell]
+    verify: [tests, lint]
+    max_attempts: 2
+    # Runs only when falsification actually found something. Note this is not
+    # `failed(falsify)`: a falsify step that finds a counterexample worked correctly.
+    condition: falsification_failed(falsify)
+    depends_on: [falsify]
+    description: >
+      Fix what falsification found. The counterexample, its reproduction and the
+      surviving mutants are in the run's falsification report.
+
+  - id: re-falsify
+    name: Re-falsification
+    kind: falsify
+    depends_on: [repair]
+    condition: success(repair)
+    description: >
+      Post-repair survival: attack the repaired change with the same strategies.
+      This is the metric that matters - whether a repair actually removed the
+      counterexample or merely moved it.
+    strategies: [mutation, property, adversarial]
+    targets: [behavior, boundary_conditions, error_handling]
+    budget:
+      max_duration_s: 600
+      max_mutants: 50
+      flakiness_probes: 2
+    on_incomplete: fail
+    on_unavailable: continue
