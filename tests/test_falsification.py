@@ -421,6 +421,30 @@ def test_a_file_that_does_not_parse_yields_no_mutants_rather_than_raising() -> N
 
 
 def test_an_identity_arithmetic_mutant_is_judged_equivalent_statically() -> None:
+    """``len(...)`` is provably an int, so ``* 1`` and ``// 1`` provably agree."""
+    source = "def f(items):\n    return len(items) * 1\n"
+    candidate = MutationCandidate(
+        file="a.py",
+        line=2,
+        operator=operators.ARITHMETIC,
+        original="*",
+        mutated="//",
+        source="def f(items):\n    return len(items) // 1\n",
+        col=22,
+    )
+
+    judgement = judge_static(candidate, source)
+
+    assert judgement.equivalent
+    assert judgement.layer is EquivalenceLayer.STATIC
+
+
+def test_identity_arithmetic_abstains_when_the_operand_type_is_unknown() -> None:
+    """``x * 1`` is ``x``; ``x // 1`` is not, unless ``x`` is known to be an int.
+
+    ``f(2.5)`` returns ``2.5`` under the original and ``2.0`` under the mutant, and
+    ``f("ab")`` raises. A literal 1 on the right says nothing about the left.
+    """
     source = "def f(x):\n    return x * 1\n"
     candidate = MutationCandidate(
         file="a.py",
@@ -429,12 +453,47 @@ def test_an_identity_arithmetic_mutant_is_judged_equivalent_statically() -> None
         original="*",
         mutated="//",
         source="def f(x):\n    return x // 1\n",
+        col=13,
     )
 
-    judgement = judge_static(candidate, source)
+    assert not judge_static(candidate, source).equivalent
 
-    assert judgement.equivalent
-    assert judgement.layer is EquivalenceLayer.STATIC
+
+def test_identity_arithmetic_judges_the_operator_it_actually_mutated() -> None:
+    """A second operator on the line must not stand in for the mutated one.
+
+    ``price * qty + 1`` mutated at the ``*`` was dismissed as equivalent because the
+    ``+ 1`` further along the line had a literal 1 on its right. ``f(10, 4)`` is 41
+    before and 3 after: a real survivor, silently deleted from the report.
+    """
+    source = "def f(price, qty):\n    return price * qty + 1\n"
+    candidate = MutationCandidate(
+        file="a.py",
+        line=2,
+        operator=operators.ARITHMETIC,
+        original="*",
+        mutated="//",
+        source="def f(price, qty):\n    return price // qty + 1\n",
+        col=17,
+    )
+
+    assert not judge_static(candidate, source).equivalent
+
+
+def test_identity_arithmetic_refuses_division_which_changes_the_type() -> None:
+    """``x / 1`` is a float where ``x * 1`` is an int, and overflows where it does not."""
+    source = "def f(items):\n    return len(items) / 1\n"
+    candidate = MutationCandidate(
+        file="a.py",
+        line=2,
+        operator=operators.ARITHMETIC,
+        original="/",
+        mutated="*",
+        source="def f(items):\n    return len(items) * 1\n",
+        col=22,
+    )
+
+    assert not judge_static(candidate, source).equivalent
 
 
 def test_an_undecidable_survivor_stays_survived_rather_than_equivalent() -> None:

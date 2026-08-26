@@ -61,6 +61,14 @@ A mutant no layer can classify **stays `SURVIVED`**. Promotion to `EQUIVALENT` o
 uncertainty is how a real weakness disappears from a report, and it is the most
 dangerous shortcut available here.
 
+The static identity rule is deliberately narrow. `x * 1` and `x // 1` agree for
+integers and for nothing else - `2.5 * 1` is `2.5` where `2.5 // 1` is `2.0`, and
+`"ab" // 1` raises - so the rule fires only where the left operand is *statically*
+an integer (`len(...)`, an int literal, integer arithmetic over those). `/` is never
+an identity: it returns a float where `*` returns an int, and overflows on integers
+that `*` handles. The rule also has to be looking at the operator that was actually
+mutated, not merely one on the same line.
+
 ## Concurrency
 
 `max_parallel_jobs` mutants are evaluated at once, each in its **own copy of the

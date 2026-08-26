@@ -112,6 +112,11 @@ class MutationCandidate:
     mutated: str
     source: str
     target: str = "behavior"
+    #: Column of the rewritten token within its line, or ``-1`` when the operator
+    #: rewrote a whole expression rather than one token. The equivalence layers need
+    #: it: a line can hold several operators, and reasoning about the wrong one is
+    #: how a real surviving mutant gets dismissed as equivalent.
+    col: int = -1
 
     @property
     def describe(self) -> str:
@@ -396,6 +401,7 @@ def _swap_operator(
             mutated=replacement_text,
             source=source[:start] + replacement_text + source[end:],
             target=OPERATOR_TARGETS[operator],
+            col=column,
         )
     ]
 

@@ -145,13 +145,29 @@ def judge_static(candidate: MutationCandidate, original_source: str) -> Judgemen
 
 
 def _identity_arithmetic(candidate: MutationCandidate) -> str:
-    """Operator swaps that cannot change the value because an operand is an identity.
+    """Operator swaps that provably cannot change the value at this exact site.
 
-    ``x * 1`` and ``x // 1`` agree for every integer; ``x + 0`` and ``x - 0`` agree
-    for every number. These are the textbook equivalent mutants, and they are worth
-    detecting precisely because they are the ones that recur.
+    Two things make this sound, and both were missing before.
+
+    **It must be the mutated operator.** A line can hold several ``BinOp`` nodes.
+    Matching on the line alone let ``price * qty + 1`` - mutated at the ``*`` - be
+    dismissed because the *other* operator on the line happened to have ``1`` on its
+    right. The mutated column now has to fall between the end of ``left`` and the
+    start of ``right``, which identifies one operator token and no other.
+
+    **The left operand must provably be an integer.** ``x * 1`` and ``x // 1`` agree
+    for integers and for nothing else: ``2.5 * 1`` is ``2.5`` while ``2.5 // 1`` is
+    ``2.0``, and ``"ab" // 1`` is a ``TypeError``. A literal ``1`` on the right says
+    nothing about the type on the left, so the left is checked too, statically, and
+    the rule abstains whenever the type cannot be established.
+
+    ``/`` is not an identity under either rule. ``x / 1`` returns a float where
+    ``x * 1`` returns an int, and ``(10**400) / 1`` raises ``OverflowError`` where
+    ``x * 1`` does not.
     """
     if candidate.operator not in {ARITHMETIC, COMPARISON, BOUNDARY}:
+        return ""
+    if candidate.col < 0:
         return ""
     try:
         tree = ast.parse(candidate.source)
@@ -159,30 +175,78 @@ def _identity_arithmetic(candidate: MutationCandidate) -> str:
         return ""
 
     for node in ast.walk(tree):
-        if not isinstance(node, ast.BinOp) or getattr(node, "lineno", None) != candidate.line:
+        if not isinstance(node, ast.BinOp):
+            continue
+        if not _mutated_here(node, candidate):
             continue
         right = node.right
         if not isinstance(right, ast.Constant) or isinstance(right.value, bool):
             continue
+        if type(right.value) is not int:
+            # A float ``1.0`` compares equal to 1 but is not the same identity:
+            # ``2.5 * 1.0`` and ``2.5 // 1.0`` differ.
+            continue
+        if not _definitely_int(node.left):
+            continue
         value = right.value
-        if isinstance(value, int | float):
-            multiplicative = {"*", "//", "/"}
-            additive = {"+", "-"}
-            if (
-                value == 1
-                and candidate.original in multiplicative
-                and candidate.mutated in multiplicative
-            ):
-                return (
-                    f"'{candidate.original}' and '{candidate.mutated}' by 1 agree for "
-                    "every integer value at this site"
-                )
-            if value == 0 and candidate.original in additive and candidate.mutated in additive:
-                return (
-                    f"'{candidate.original}' and '{candidate.mutated}' by 0 agree for "
-                    "every numeric value at this site"
-                )
+        if value == 1 and {candidate.original, candidate.mutated} <= {"*", "//"}:
+            return (
+                f"'{candidate.original}' and '{candidate.mutated}' by 1 agree for "
+                "every integer, and the left operand is statically an integer here"
+            )
+        if value == 0 and {candidate.original, candidate.mutated} <= {"+", "-"}:
+            return (
+                f"'{candidate.original}' and '{candidate.mutated}' by 0 agree for "
+                "every integer, and the left operand is statically an integer here"
+            )
     return ""
+
+
+def _mutated_here(node: ast.BinOp, candidate: MutationCandidate) -> bool:
+    """Whether ``node``'s operator token is the one the candidate rewrote.
+
+    Operator nodes carry no column of their own, so the token is located by the gap
+    between the operands. Anything spanning more than the mutated line is refused
+    rather than guessed at.
+    """
+    left, right = node.left, node.right
+    if getattr(left, "end_lineno", None) != candidate.line:
+        return False
+    if getattr(right, "lineno", None) != candidate.line:
+        return False
+    left_end = getattr(left, "end_col_offset", None)
+    right_start = getattr(right, "col_offset", None)
+    if left_end is None or right_start is None:
+        return False
+    return left_end <= candidate.col < right_start
+
+
+#: Calls whose result is an ``int`` for every argument they accept.
+_INT_CALLS = frozenset({"len", "ord", "int", "hash", "id"})
+
+#: Binary operators that map two ints to an int. ``/`` gives a float and ``**`` can
+#: (``2 ** -1``), so neither is here.
+_INT_BINOPS = (ast.Add, ast.Sub, ast.Mult, ast.FloorDiv, ast.Mod)
+
+
+def _definitely_int(node: ast.AST) -> bool:
+    """Whether ``node`` evaluates to an ``int`` for every possible execution.
+
+    Deliberately a small, conservative recogniser. It returns ``False`` for anything
+    it cannot establish - including every plain name, because a parameter called
+    ``count`` can still be handed a float - and the caller then abstains instead of
+    claiming an equivalence it has not shown.
+    """
+    if isinstance(node, ast.Constant):
+        return type(node.value) is int
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.UAdd | ast.USub):
+        return _definitely_int(node.operand)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, _INT_BINOPS):
+        return _definitely_int(node.left) and _definitely_int(node.right)
+    if isinstance(node, ast.Call):
+        func = node.func
+        return isinstance(func, ast.Name) and func.id in _INT_CALLS and not node.keywords
+    return False
 
 
 def _unreachable_mutation(candidate: MutationCandidate, mutated_tree: ast.AST) -> str:
