@@ -496,6 +496,16 @@ def test_identity_arithmetic_refuses_division_which_changes_the_type() -> None:
     assert not judge_static(candidate, source).equivalent
 
 
+def test_a_docstring_is_never_offered_as_a_mutation_candidate() -> None:
+    """Blanking a docstring survives every suite; reporting it is noise, not a finding."""
+    source = '"""Module."""\ndef f(x):\n    """Docs."""\n    return x + 1\n'
+
+    mutated = {candidate.original for candidate in operators.generate(source, filename="a.py")}
+
+    assert '"""Module."""' not in mutated
+    assert '"""Docs."""' not in mutated
+
+
 def test_an_undecidable_survivor_stays_survived_rather_than_equivalent() -> None:
     """Promotion to EQUIVALENT is how a real weakness disappears from a report."""
     source = "def f(x):\n    return x + 2\n"

@@ -34,7 +34,7 @@ import asyncio
 from pathlib import Path
 
 from devforge.falsification import mutation_operators as operators
-from devforge.falsification.equivalence import classify
+from devforge.falsification.equivalence import classify, describes_constant_noise
 from devforge.falsification.models import (
     Confidence,
     Mutant,
@@ -341,6 +341,17 @@ class MutationStrategy(FalsificationStrategy):
         duration_ms: int,
     ) -> Mutant:
         """A survivor is a weak test until a layer proves otherwise."""
+        if describes_constant_noise(candidate):
+            # Backstop for anything the generator let through: a docstring change is
+            # not an equivalent implementation, it is not an implementation change at
+            # all, so it is INVALID rather than a survivor or an equivalence.
+            return self._mutant(
+                candidate,
+                status=MutantStatus.INVALID,
+                reason="the mutated constant is documentation, not behaviour",
+                duration_ms=duration_ms,
+            )
+
         options = ctx.options(StrategyName.MUTATION)
         judgement = classify(
             candidate,
