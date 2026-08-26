@@ -151,9 +151,32 @@ class PropertyStrategy(FalsificationStrategy):
                 severity=example.severity.value,
             )
 
-        status = StrategyStatus.FAILED if counterexamples else StrategyStatus.SURVIVED
-        if not counterexamples and usage.truncated:
+        if counterexamples:
+            status = StrategyStatus.FAILED
+        elif not outcome.passed:
+            # The suite went red and nothing was parsed out of it. Whatever happened,
+            # it was not a survival: reporting one here would turn a failing run into
+            # a clean bill of health, which is the precise bypass this guards.
+            return self.report(
+                status=StrategyStatus.ERROR,
+                attempts=len(scheduled),
+                duration_ms=outcome.duration_ms,
+                properties_tested=len(scheduled),
+                usage=usage,
+                summary=(
+                    "the generated property module failed but reported no violation "
+                    f"this strategy could read (exit {outcome.exit_code})"
+                ),
+                limitations=[
+                    "property: the property run failed without a parsable violation, "
+                    "so no verdict about the implementation can be drawn from it",
+                    f"property: {self.excerpt(outcome.output, 800)}",
+                ],
+            )
+        elif usage.truncated:
             status = StrategyStatus.INCOMPLETE
+        else:
+            status = StrategyStatus.SURVIVED
 
         limitations = [
             f"property: only the {len(scheduled)} declared propert(ies) were checked, "
@@ -246,8 +269,12 @@ class PropertyStrategy(FalsificationStrategy):
             f"def test_{self._slug(property_id)}({parameters or '_unused'}):",
             f"    import {module} as target",
             f"    args = [{parameters}]" if parameters else "    args = []",
-            f"    result = target.{call}(*args)",
+            # The call under attack is inside the try. An exception escaping the
+            # implementation is the single most common property finding, and leaving
+            # the call outside meant the test died before printing its marker - so
+            # the strategy parsed nothing and reported a survival over a red run.
             "    try:",
+            f"        result = target.{call}(*args)",
             f"        holds = bool({invariant})",
             "    except Exception as exc:",
             f"        print({marker!r} + json.dumps("

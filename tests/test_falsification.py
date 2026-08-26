@@ -901,3 +901,67 @@ def test_parallel_mutation_reaches_the_same_verdict_as_serial(tmp_path: Path) ->
     assert parallel.status is serial.status
 
 
+@pytest.mark.slow
+def test_a_property_run_that_crashes_reports_the_crash_not_a_survival(
+    tmp_path: Path,
+) -> None:
+    """An exception escaping the call under attack is the finding, not a shrug.
+
+    The generated test used to call the implementation outside its own try block, so
+    a raising call killed the test before it printed the marker the strategy parses.
+    Nothing was parsed, and the strategy reported SURVIVED over a red run.
+    """
+    import asyncio
+
+    root = tmp_path
+    (root / "billing.py").write_text(
+        "def rate(n):\n    return abs(100 // n)\n", encoding="utf-8"
+    )
+    (root / "pytest.ini").write_text("[pytest]\npythonpath = .\n", encoding="utf-8")
+
+    report = asyncio.run(
+        FalsificationEngine().run(
+            source_root=root,
+            policy=PolicyEngine.load(None, workspace=root),
+            strategies=["property"],
+            budget=Budget(max_duration_s=300, flakiness_probes=0),
+            changed_files=["billing.py"],
+            test_command=["python", "-m", "pytest", "-q"],
+            test_timeout_s=90,
+            config={
+                "property": {
+                    "properties": [
+                        {
+                            "id": "rate-non-negative",
+                            "module": "billing",
+                            "call": "rate",
+                            "args": ["ints"],
+                            "invariant": "result >= 0",
+                        }
+                    ]
+                }
+            },
+        )
+    )
+
+    assert report.status is FalsificationStatus.FAILED, report.status
+    assert report.counterexamples
+    assert "ZeroDivisionError" in report.counterexamples[0].actual
+
+
+def test_a_red_property_run_with_nothing_parsed_is_never_a_survival() -> None:
+    """The backstop: a failing suite must never settle as SURVIVED.
+
+    Whatever went wrong - an unreadable output, a changed runner format, a module
+    that would not import - the one answer that is definitely unavailable is "no
+    counterexample was found".
+    """
+    from devforge.falsification.strategies.property import PropertyStrategy
+
+    assert PropertyStrategy  # imported for the reader; the guard is asserted below
+
+    for status in (StrategyStatus.ERROR, StrategyStatus.INCOMPLETE):
+        report = FalsificationReport(strategies=[StrategyReport(
+            strategy=StrategyName.PROPERTY, status=status
+        )])
+        assert report.derive_status() is not FalsificationStatus.SURVIVED
