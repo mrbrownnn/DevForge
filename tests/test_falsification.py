@@ -820,3 +820,84 @@ def test_isolation_unavailable_refuses_rather_than_using_the_real_tree(tmp_path:
     assert report.status is FalsificationStatus.UNAVAILABLE
     assert report.isolation == "none"
     assert any("ISOLATION_UNAVAILABLE" in item for item in report.limitations)
+
+
+# ------------------------------------------------------- regressions: no bypass
+
+
+def test_lanes_give_each_concurrent_mutant_its_own_tree(tmp_path: Path) -> None:
+    """Two lanes must not be the same directory, or they share one test run."""
+    from devforge.falsification.sandbox import open_lanes
+
+    root = tmp_path / "src"
+    root.mkdir()
+    (root / "a.py").write_text("VALUE = 1\n", encoding="utf-8")
+
+    lanes, shortfall = open_lanes(root, 3)
+    try:
+        assert shortfall == ""
+        assert len({lane.root for lane in lanes}) == 3
+        assert lanes[0].root == root and lanes[0].primary
+
+        # A write in one lane is invisible in every other.
+        (lanes[1].root / "a.py").write_text("VALUE = 2\n", encoding="utf-8")
+        assert (lanes[0].root / "a.py").read_text(encoding="utf-8") == "VALUE = 1\n"
+        assert (lanes[2].root / "a.py").read_text(encoding="utf-8") == "VALUE = 1\n"
+    finally:
+        for lane in lanes:
+            lane.release()
+
+    assert root.is_dir(), "releasing the pool must not delete the sandbox it borrowed"
+
+
+@pytest.mark.slow
+def test_parallel_mutation_reaches_the_same_verdict_as_serial(tmp_path: Path) -> None:
+    """Concurrency must not change a verdict, only how long it takes to reach one.
+
+    Sharing one workspace made mutants judge each other: a mutant in an untested file
+    was recorded as killed by a fault injected elsewhere in the same tree, and the
+    score came out higher than the suite deserved. A run at four jobs and a run at
+    one must agree mutant for mutant.
+    """
+    import asyncio
+
+    def run(directory: Path, jobs: int):
+        directory.mkdir()
+        root = _project(directory)
+        # A second changed file, untested, so there is something for a concurrent
+        # mutant in the tested file to wrongly take credit for killing.
+        (root / "untested.py").write_text(
+            "def unreached(x):\n    return x + 1\n", encoding="utf-8"
+        )
+        return asyncio.run(
+            FalsificationEngine().run(
+                source_root=root,
+                policy=PolicyEngine.load(None, workspace=root),
+                strategies=["mutation"],
+                budget=Budget(
+                    max_duration_s=300,
+                    max_mutants=12,
+                    flakiness_probes=0,
+                    max_parallel_jobs=jobs,
+                ),
+                changed_files=["billing.py", "untested.py"],
+                diff="diff --git a/billing.py b/billing.py\n",
+                test_command=["python", "-m", "pytest", "-q"],
+                test_timeout_s=90,
+            )
+        )
+
+    serial = run(tmp_path / "serial", 1)
+    parallel = run(tmp_path / "parallel", 4)
+
+    def verdicts(report) -> dict[str, str]:
+        return {
+            f"{m.file}:{m.line}:{m.operator}:{m.mutated}": m.status.value
+            for m in report.mutants
+        }
+
+    assert verdicts(parallel) == verdicts(serial)
+    assert parallel.mutation_score == serial.mutation_score
+    assert parallel.status is serial.status
+
+

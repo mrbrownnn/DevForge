@@ -10,7 +10,7 @@ Pipeline::
     diff -> candidates -> mutate in the sandbox -> run relevant tests
          -> killed / survived -> classify survivors -> report
 
-Four things this implementation refuses to do, each of which would make the numbers
+Five things this implementation refuses to do, each of which would make the numbers
 look better and mean less:
 
 * **Mutate outside the patch.** Scope defaults to lines the diff touched. A
@@ -22,6 +22,10 @@ look better and mean less:
 * **Assume a survivor is equivalent.** Survivors go through the layered classifier,
   and anything it cannot decide stays ``SURVIVED``.
 * **Report a score over nothing.** Zero valid mutants gives ``None``, not 100%.
+* **Judge two mutants with one test run.** Concurrent mutants get private copies of
+  the sandbox. Sharing one directory meant sharing one verdict: a mutant in an
+  untested file was recorded as killed by a fault injected somewhere else, and the
+  score measured the overlap between two mutations rather than the suite.
 """
 
 from __future__ import annotations
@@ -43,6 +47,7 @@ from devforge.falsification.models import (
 )
 from devforge.falsification.mutation_operators import MutationCandidate
 from devforge.falsification.reliability import verdict_is_reliable
+from devforge.falsification.sandbox import Lane, open_lanes
 from devforge.falsification.strategies.base import (
     Availability,
     FalsificationContext,
@@ -113,11 +118,11 @@ class MutationStrategy(FalsificationStrategy):
                 usage=ctx.ledger.snapshot(),
             )
 
-        mutants = await self._evaluate(ctx, candidates)
+        mutants, lane_notes = await self._evaluate(ctx, candidates)
         weaknesses = self._weaknesses(mutants, ctx)
         usage = ctx.ledger.snapshot()
 
-        limitations = list(skipped)
+        limitations = list(skipped) + lane_notes
         if usage.truncated:
             limitations.append(
                 f"mutation: stopped by {', '.join(usage.exhausted)} after "
@@ -195,16 +200,20 @@ class MutationStrategy(FalsificationStrategy):
 
     async def _evaluate(
         self, ctx: FalsificationContext, candidates: list[MutationCandidate]
-    ) -> list[Mutant]:
-        """Run each mutant, bounded by the budget, up to ``max_parallel_jobs`` at once.
+    ) -> tuple[list[Mutant], list[str]]:
+        """Run each mutant, bounded by the budget, one per private workspace.
 
-        Mutants against the *same file* cannot run concurrently: they write to the
-        same path. Concurrency is therefore across files, which is where it is safe.
+        Concurrency here is **not** across files in a shared directory. A mutant is
+        judged by running the whole suite, so two mutants living in one directory are
+        judged by one run: whichever fault it reports is recorded against both, and a
+        mutant in an untested file is credited as killed by a mutant in a tested one.
+        The score then measures the overlap of the two faults rather than the suite.
+
+        So each concurrent worker gets its own copy of the sandbox - a lane - and a
+        mutant is only ever alone in the tree that judges it. Copies cost one per
+        worker, not one per mutant. When fewer lanes than requested can be created
+        the pool simply runs narrower, and says so.
         """
-        semaphore = asyncio.Semaphore(max(1, ctx.ledger.budget.max_parallel_jobs))
-        locks: dict[str, asyncio.Lock] = {}
-        results: list[Mutant] = []
-
         scheduled: list[MutationCandidate] = []
         for candidate in candidates:
             if not ctx.ledger.allows("mutants_generated", "max_mutants"):
@@ -212,20 +221,46 @@ class MutationStrategy(FalsificationStrategy):
             ctx.ledger.spend("mutants_generated")
             scheduled.append(candidate)
 
-        async def run_one(candidate: MutationCandidate) -> Mutant:
-            lock = locks.setdefault(candidate.file, asyncio.Lock())
-            async with semaphore, lock:
-                return await self._evaluate_one(ctx, candidate)
+        if not scheduled:
+            return [], []
 
-        if scheduled:
+        wanted = max(1, min(ctx.ledger.budget.max_parallel_jobs, len(scheduled)))
+        lanes, shortfall = open_lanes(ctx.workspace, wanted)
+        notes = [f"mutation: {shortfall}"] if shortfall else []
+        if len(lanes) > 1:
+            ctx.logger.info("mutation.lanes", requested=wanted, obtained=len(lanes))
+
+        available: asyncio.Queue[Lane] = asyncio.Queue()
+        for lane in lanes:
+            available.put_nowait(lane)
+
+        async def run_one(candidate: MutationCandidate) -> Mutant:
+            lane = await available.get()
+            try:
+                return await self._evaluate_one(ctx, candidate, workspace=lane.root)
+            finally:
+                available.put_nowait(lane)
+
+        try:
             results = list(await asyncio.gather(*(run_one(c) for c in scheduled)))
-        return results
+        finally:
+            for lane in lanes:
+                lane.release()
+        return results, notes
 
     async def _evaluate_one(
-        self, ctx: FalsificationContext, candidate: MutationCandidate
+        self, ctx: FalsificationContext, candidate: MutationCandidate, *, workspace: Path
     ) -> Mutant:
-        path = ctx.workspace / candidate.file
-        original = path.read_text(encoding="utf-8")
+        """Judge one mutant in ``workspace``, which nothing else is writing to."""
+        path = workspace / candidate.file
+        try:
+            original = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            return self._mutant(
+                candidate,
+                status=MutantStatus.ERROR,
+                reason=f"the file to mutate could not be read in this lane: {exc}",
+            )
 
         ctx.logger.info(
             "mutation.generated",
@@ -238,7 +273,7 @@ class MutationStrategy(FalsificationStrategy):
             path.write_text(candidate.source, encoding="utf-8")
             outcome = await run_tests(
                 ctx.test_command,
-                workspace=ctx.workspace,
+                workspace=workspace,
                 policy=ctx.policy,
                 timeout_s=ctx.test_timeout_s,
             )
