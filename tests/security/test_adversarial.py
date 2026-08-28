@@ -14,6 +14,7 @@ it false should have to update a test that says so out loud.
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 
 import pytest
@@ -167,20 +168,54 @@ def test_shell_tool_refuses_an_unlisted_binary(project: ProjectStore) -> None:
 # ATTACK: path_traversal
 
 
-@pytest.mark.parametrize(
-    "path",
-    [
-        "../../../etc/passwd",
+#: Escapes every platform agrees on, plus the backslash-separated ones that are an
+#: escape only on Windows. On POSIX a backslash is an ordinary filename character, so
+#: "..\\..\\Windows\\System32\\config\\SAM" names one file directly inside the
+#: workspace: allowing it is the correct verdict there, and demanding a refusal tests
+#: the platform's path grammar rather than the policy.
+ESCAPING_PATHS = [
+    "../../../etc/passwd",
+    "subdir/../../outside.txt",
+    "/etc/shadow",
+]
+if os.name == "nt":
+    ESCAPING_PATHS += [
         "..\\..\\Windows\\System32\\config\\SAM",
-        "subdir/../../outside.txt",
-        "/etc/shadow",
         "C:\\Windows\\win.ini",
-    ],
-)
+    ]
+
+
+@pytest.mark.parametrize("path", ESCAPING_PATHS)
 def test_traversal_outside_the_workspace_is_refused(path: str, project: ProjectStore) -> None:
     decision = policy_for(project.root).check_path(path, mode="read")
 
     assert not decision.allowed, f"{path} escaped the workspace"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="on Windows these genuinely are traversals")
+@pytest.mark.parametrize(
+    "path",
+    [r"..\..\Windows\System32\config\SAM", r"C:\Windows\win.ini"],
+)
+def test_backslash_paths_stay_inside_the_workspace_on_posix(
+    path: str, project: ProjectStore
+) -> None:
+    """The other half of the platform split: what these names actually resolve to.
+
+    They are dropped from the refusal list on POSIX, so the behaviour they do have
+    is pinned here rather than left untested. A backslash is an ordinary filename
+    character, so each of these is one file directly inside the workspace - and if a
+    future change ever made one of them resolve outside it, that is a real escape
+    and this test is what catches it.
+    """
+    engine = policy_for(project.root)
+
+    resolved = engine.resolve_path(path)
+
+    assert project.root.resolve() in resolved.resolve().parents or (
+        resolved.resolve().parent == project.root.resolve()
+    ), f"{path} resolved outside the workspace: {resolved}"
+    assert engine.check_path(path, mode="read").allowed
 
 
 def test_filesystem_tool_refuses_to_write_outside_the_workspace(project: ProjectStore) -> None:

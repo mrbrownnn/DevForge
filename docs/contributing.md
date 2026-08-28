@@ -24,6 +24,32 @@ Tests must never call a real model runtime. `MockAgentRuntime` exists so the who
 harness can be exercised deterministically and for free; the Claude Code adapter is
 tested through `parse_result` and `build_argv`, which need no subprocess.
 
+## What CI runs
+
+`.github/workflows/ci.yml`, on every push and pull request. Every job here can be
+run locally, and the ones that catch the most are the ones that are hardest to run
+locally — which is the point of running them here.
+
+| Job | What it would catch |
+| --- | --- |
+| `lint` | `ruff check .` |
+| `test` | The suite on 3 OSes x 3 interpreters, with the optional extras installed |
+| `degraded` | The suite on a bare install: every "not available, and here is why" branch |
+| `coverage` | Coverage as an artefact. It does not gate — a threshold buys tests written to move a number |
+| `security` | DevForge's own scanner, audit, SBOM and report against DevForge's own tree, plus expired baseline acceptances |
+| `assets` | Every shipped YAML/JSON parses, and the builtin workflows, agents, runtimes, skills, registry, radar and eval catalogues all load |
+| `package` | The wheel builds, passes `twine check`, and actually contains its builtin assets and the licence |
+| `smoke` | That wheel installed on each OS and driven across the whole CLI surface from a directory that is not the source tree |
+| `ci-ok` | One name to require in a branch rule, so the rule survives a matrix change |
+
+`.github/workflows/release.yml` is the release path: tag `vX.Y.Z` builds, checks the
+tag against the packaged version, re-runs the smoke on every OS and interpreter
+against the release candidate, and only then creates the GitHub release. Publishing
+to PyPI uses trusted publishing and stays skipped until the repository variable
+`PYPI_TRUSTED_PUBLISHING` is set to `true`. Running it from the Actions tab exercises
+everything except the two publishing steps, so the path is never first tried on the
+day of a release.
+
 ## Where things go
 
 | Change | Location |

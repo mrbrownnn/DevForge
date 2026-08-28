@@ -1,0 +1,24 @@
+version: 2
+
+updates:
+  # Actions are the one supply chain CI cannot check for itself: a pinned action
+  # that goes stale is a build step nobody is reading any more.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "ci"
+    labels: ["ci", "dependencies"]
+
+  # Runtime dependencies are deliberately four packages and the version floors are
+  # lower bounds, not pins - so this watches the dev and optional extras for
+  # breakage, and opens one PR that CI answers.
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "deps"
+    labels: ["dependencies"]
+    open-pull-requests-limit: 5

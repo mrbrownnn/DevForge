@@ -223,20 +223,31 @@ async def test_shell_rejects_malformed_input(ctx: ToolContext) -> None:
 # ------------------------------------------------------------- unavailable adapters
 
 
-async def test_browser_tool_reports_status_but_never_fabricates(ctx: ToolContext) -> None:
+async def test_browser_tool_reports_status_but_never_fabricates(
+    ctx: ToolContext, monkeypatch
+) -> None:
     tool = BrowserTool()
-    available = tool.availability().available
 
+    # Network access is off by default, so the refusal is the policy's - and it is
+    # the answer whether or not a driver happens to be installed on this machine.
+    denied = await tool.invoke("text", {"url": "https://example.com"}, ctx)
+    assert denied.status is ToolStatus.DENIED
+    assert "network access is disabled" in denied.error
+    assert denied.output == "", "no page content may be fabricated"
+
+    # With the host permitted and no driver, the honest answer is "unavailable" -
+    # still never page content. Forced rather than inferred from the environment,
+    # so the assertion means the same thing with and without the browser extra.
+    monkeypatch.setattr(
+        "devforge.tools.browser.playwright_available",
+        lambda: (False, "playwright is not installed"),
+    )
+    ctx.policy.permissions.network.enabled = True
+    ctx.policy.permissions.network.allow_hosts = ["example.com"]
     result = await tool.invoke("text", {"url": "https://example.com"}, ctx)
 
-    if available:
-        # Playwright is installed, so the refusal must come from the network policy,
-        # which is disabled by default - not from a missing driver.
-        assert result.status is ToolStatus.DENIED
-        assert "network access is disabled" in result.error
-    else:
-        assert result.status is ToolStatus.UNAVAILABLE
-        assert "playwright is not installed" in result.error
+    assert result.status is ToolStatus.UNAVAILABLE
+    assert "playwright is not installed" in result.error
     assert result.output == "", "no page content may be fabricated either way"
 
 

@@ -343,6 +343,21 @@ def test_evidence_refuses_denied_paths_and_records_the_refusal(project: ProjectS
 def test_runtime_state_reports_env_names_never_values(
     project: ProjectStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """The claim is about values, and it must hold whatever else is in the environment.
+
+    The listing is sorted and bounded, so asserting on one chosen name only worked
+    while the surrounding environment stayed small: under CI, a few dozen GITHUB_*
+    variables sort ahead of it and push it past the cap. The invariant that actually
+    matters - the value never appears - does not depend on that, and the name is
+    checked against one the listing is guaranteed to reach.
+    """
+    import os
+
+    # Lift the cap for this test rather than dropping the assertion it broke. The
+    # claim is that the name is listed and the value is not; under CI the default
+    # cap of 60 cut the injected name off, which is a property of the listing size,
+    # not of what the record is allowed to contain.
+    monkeypatch.setattr(ev, "MAX_ENV_NAMES", len(os.environ) + 10)
     monkeypatch.setenv("MY_DEPLOY_TOKEN", "hunter2-not-a-shape-we-detect")
     collector = ev.EvidenceCollector(workspace=project.root, policy=policy_for(project.root))
 
@@ -351,6 +366,20 @@ def test_runtime_state_reports_env_names_never_values(
     content = collector.bundle.of(EvidenceKind.RUNTIME_STATE)[0].content
     assert "MY_DEPLOY_TOKEN" in content
     assert "hunter2-not-a-shape-we-detect" not in content
+    assert "names only" in content
+
+
+def test_runtime_state_says_when_the_env_listing_was_truncated(
+    project: ProjectStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A cut list reads as the whole environment unless it says it was cut."""
+    monkeypatch.setattr(ev, "MAX_ENV_NAMES", 2)
+    collector = ev.EvidenceCollector(workspace=project.root, policy=policy_for(project.root))
+
+    collector.runtime_state()
+
+    content = collector.bundle.of(EvidenceKind.RUNTIME_STATE)[0].content
+    assert "more not listed" in content
 
 
 def test_source_is_read_only_for_frames_inside_the_workspace(project: ProjectStore) -> None:
