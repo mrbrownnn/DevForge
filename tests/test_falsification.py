@@ -421,6 +421,30 @@ def test_a_file_that_does_not_parse_yields_no_mutants_rather_than_raising() -> N
 
 
 def test_an_identity_arithmetic_mutant_is_judged_equivalent_statically() -> None:
+    """``len(...)`` is provably an int, so ``* 1`` and ``// 1`` provably agree."""
+    source = "def f(items):\n    return len(items) * 1\n"
+    candidate = MutationCandidate(
+        file="a.py",
+        line=2,
+        operator=operators.ARITHMETIC,
+        original="*",
+        mutated="//",
+        source="def f(items):\n    return len(items) // 1\n",
+        col=22,
+    )
+
+    judgement = judge_static(candidate, source)
+
+    assert judgement.equivalent
+    assert judgement.layer is EquivalenceLayer.STATIC
+
+
+def test_identity_arithmetic_abstains_when_the_operand_type_is_unknown() -> None:
+    """``x * 1`` is ``x``; ``x // 1`` is not, unless ``x`` is known to be an int.
+
+    ``f(2.5)`` returns ``2.5`` under the original and ``2.0`` under the mutant, and
+    ``f("ab")`` raises. A literal 1 on the right says nothing about the left.
+    """
     source = "def f(x):\n    return x * 1\n"
     candidate = MutationCandidate(
         file="a.py",
@@ -429,12 +453,57 @@ def test_an_identity_arithmetic_mutant_is_judged_equivalent_statically() -> None
         original="*",
         mutated="//",
         source="def f(x):\n    return x // 1\n",
+        col=13,
     )
 
-    judgement = judge_static(candidate, source)
+    assert not judge_static(candidate, source).equivalent
 
-    assert judgement.equivalent
-    assert judgement.layer is EquivalenceLayer.STATIC
+
+def test_identity_arithmetic_judges_the_operator_it_actually_mutated() -> None:
+    """A second operator on the line must not stand in for the mutated one.
+
+    ``price * qty + 1`` mutated at the ``*`` was dismissed as equivalent because the
+    ``+ 1`` further along the line had a literal 1 on its right. ``f(10, 4)`` is 41
+    before and 3 after: a real survivor, silently deleted from the report.
+    """
+    source = "def f(price, qty):\n    return price * qty + 1\n"
+    candidate = MutationCandidate(
+        file="a.py",
+        line=2,
+        operator=operators.ARITHMETIC,
+        original="*",
+        mutated="//",
+        source="def f(price, qty):\n    return price // qty + 1\n",
+        col=17,
+    )
+
+    assert not judge_static(candidate, source).equivalent
+
+
+def test_identity_arithmetic_refuses_division_which_changes_the_type() -> None:
+    """``x / 1`` is a float where ``x * 1`` is an int, and overflows where it does not."""
+    source = "def f(items):\n    return len(items) / 1\n"
+    candidate = MutationCandidate(
+        file="a.py",
+        line=2,
+        operator=operators.ARITHMETIC,
+        original="/",
+        mutated="*",
+        source="def f(items):\n    return len(items) * 1\n",
+        col=22,
+    )
+
+    assert not judge_static(candidate, source).equivalent
+
+
+def test_a_docstring_is_never_offered_as_a_mutation_candidate() -> None:
+    """Blanking a docstring survives every suite; reporting it is noise, not a finding."""
+    source = '"""Module."""\ndef f(x):\n    """Docs."""\n    return x + 1\n'
+
+    mutated = {candidate.original for candidate in operators.generate(source, filename="a.py")}
+
+    assert '"""Module."""' not in mutated
+    assert '"""Docs."""' not in mutated
 
 
 def test_an_undecidable_survivor_stays_survived_rather_than_equivalent() -> None:
@@ -820,3 +889,156 @@ def test_isolation_unavailable_refuses_rather_than_using_the_real_tree(tmp_path:
     assert report.status is FalsificationStatus.UNAVAILABLE
     assert report.isolation == "none"
     assert any("ISOLATION_UNAVAILABLE" in item for item in report.limitations)
+
+
+# ------------------------------------------------------- regressions: no bypass
+
+
+def test_lanes_give_each_concurrent_mutant_its_own_tree(tmp_path: Path) -> None:
+    """Two lanes must not be the same directory, or they share one test run."""
+    from devforge.falsification.sandbox import open_lanes
+
+    root = tmp_path / "src"
+    root.mkdir()
+    (root / "a.py").write_text("VALUE = 1\n", encoding="utf-8")
+
+    lanes, shortfall = open_lanes(root, 3)
+    try:
+        assert shortfall == ""
+        assert len({lane.root for lane in lanes}) == 3
+        assert lanes[0].root == root and lanes[0].primary
+
+        # A write in one lane is invisible in every other.
+        (lanes[1].root / "a.py").write_text("VALUE = 2\n", encoding="utf-8")
+        assert (lanes[0].root / "a.py").read_text(encoding="utf-8") == "VALUE = 1\n"
+        assert (lanes[2].root / "a.py").read_text(encoding="utf-8") == "VALUE = 1\n"
+    finally:
+        for lane in lanes:
+            lane.release()
+
+    assert root.is_dir(), "releasing the pool must not delete the sandbox it borrowed"
+
+
+@pytest.mark.slow
+def test_parallel_mutation_reaches_the_same_verdict_as_serial(tmp_path: Path) -> None:
+    """Concurrency must not change a verdict, only how long it takes to reach one.
+
+    Sharing one workspace made mutants judge each other: a mutant in an untested file
+    was recorded as killed by a fault injected elsewhere in the same tree, and the
+    score came out higher than the suite deserved. A run at four jobs and a run at
+    one must agree mutant for mutant.
+    """
+    import asyncio
+
+    def run(directory: Path, jobs: int):
+        directory.mkdir()
+        root = _project(directory)
+        # A second changed file, untested, so there is something for a concurrent
+        # mutant in the tested file to wrongly take credit for killing.
+        (root / "untested.py").write_text(
+            "def unreached(x):\n    return x + 1\n", encoding="utf-8"
+        )
+        return asyncio.run(
+            FalsificationEngine().run(
+                source_root=root,
+                policy=PolicyEngine.load(None, workspace=root),
+                strategies=["mutation"],
+                budget=Budget(
+                    max_duration_s=300,
+                    max_mutants=12,
+                    flakiness_probes=0,
+                    max_parallel_jobs=jobs,
+                ),
+                changed_files=["billing.py", "untested.py"],
+                diff="diff --git a/billing.py b/billing.py\n",
+                test_command=["python", "-m", "pytest", "-q"],
+                test_timeout_s=90,
+            )
+        )
+
+    serial = run(tmp_path / "serial", 1)
+    parallel = run(tmp_path / "parallel", 4)
+
+    def verdicts(report) -> dict[str, str]:
+        return {
+            f"{m.file}:{m.line}:{m.operator}:{m.mutated}": m.status.value
+            for m in report.mutants
+        }
+
+    assert verdicts(parallel) == verdicts(serial)
+    assert parallel.mutation_score == serial.mutation_score
+    assert parallel.status is serial.status
+
+
+@pytest.mark.slow
+def test_a_property_run_that_crashes_reports_the_crash_not_a_survival(
+    tmp_path: Path,
+) -> None:
+    """An exception escaping the call under attack is the finding, not a shrug.
+
+    The generated test used to call the implementation outside its own try block, so
+    a raising call killed the test before it printed the marker the strategy parses.
+    Nothing was parsed, and the strategy reported SURVIVED over a red run.
+    """
+    import asyncio
+    import importlib.util
+
+    if importlib.util.find_spec("hypothesis") is None:
+        # This asserts what the property strategy does when it can actually run. With
+        # the extra absent it reports UNAVAILABLE, which is the documented degradation
+        # and is asserted by the backstop test below - not something to re-check here
+        # by demanding a crash the strategy never got far enough to see.
+        pytest.skip("hypothesis is not installed; the property strategy is unavailable")
+
+    root = tmp_path
+    (root / "billing.py").write_text(
+        "def rate(n):\n    return abs(100 // n)\n", encoding="utf-8"
+    )
+    (root / "pytest.ini").write_text("[pytest]\npythonpath = .\n", encoding="utf-8")
+
+    report = asyncio.run(
+        FalsificationEngine().run(
+            source_root=root,
+            policy=PolicyEngine.load(None, workspace=root),
+            strategies=["property"],
+            budget=Budget(max_duration_s=300, flakiness_probes=0),
+            changed_files=["billing.py"],
+            test_command=["python", "-m", "pytest", "-q"],
+            test_timeout_s=90,
+            config={
+                "property": {
+                    "properties": [
+                        {
+                            "id": "rate-non-negative",
+                            "module": "billing",
+                            "call": "rate",
+                            "args": ["ints"],
+                            "invariant": "result >= 0",
+                        }
+                    ]
+                }
+            },
+        )
+    )
+
+    assert report.status is FalsificationStatus.FAILED, report.status
+    assert report.counterexamples
+    assert "ZeroDivisionError" in report.counterexamples[0].actual
+
+
+def test_a_red_property_run_with_nothing_parsed_is_never_a_survival() -> None:
+    """The backstop: a failing suite must never settle as SURVIVED.
+
+    Whatever went wrong - an unreadable output, a changed runner format, a module
+    that would not import - the one answer that is definitely unavailable is "no
+    counterexample was found".
+    """
+    from devforge.falsification.strategies.property import PropertyStrategy
+
+    assert PropertyStrategy  # imported for the reader; the guard is asserted below
+
+    for status in (StrategyStatus.ERROR, StrategyStatus.INCOMPLETE):
+        report = FalsificationReport(strategies=[StrategyReport(
+            strategy=StrategyName.PROPERTY, status=status
+        )])
+        assert report.derive_status() is not FalsificationStatus.SURVIVED
