@@ -348,9 +348,17 @@ jobs:
     name: ci ok
     runs-on: ubuntu-latest
     needs: [lint, test, degraded, coverage, security, assets, package, smoke]
-    if: always()
+    # Not `always()`: that also runs when the whole run was cancelled, which is what
+    # the concurrency group above does to every run a newer push supersedes. This
+    # job would then be the only red mark on a run that was simply abandoned, and a
+    # red check nobody is meant to act on is the kind people learn to ignore.
+    # `!cancelled()` reports on runs that finished, and skips the ones that did not.
+    if: ${{ !cancelled() }}
     steps:
       - name: every job succeeded
+        # `cancelled` is still checked per job: a job that runs past its
+        # timeout-minutes is marked cancelled while the run itself is not, and that
+        # is a real failure to report.
         run: |
           echo "result: ${{ join(needs.*.result, ', ') }}"
           if [[ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
