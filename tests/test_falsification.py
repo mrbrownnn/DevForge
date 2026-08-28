@@ -981,6 +981,14 @@ def test_a_property_run_that_crashes_reports_the_crash_not_a_survival(
     Nothing was parsed, and the strategy reported SURVIVED over a red run.
     """
     import asyncio
+    import importlib.util
+
+    if importlib.util.find_spec("hypothesis") is None:
+        # This asserts what the property strategy does when it can actually run. With
+        # the extra absent it reports UNAVAILABLE, which is the documented degradation
+        # and is asserted by the backstop test below - not something to re-check here
+        # by demanding a crash the strategy never got far enough to see.
+        pytest.skip("hypothesis is not installed; the property strategy is unavailable")
 
     root = tmp_path
     (root / "billing.py").write_text(
