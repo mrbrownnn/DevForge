@@ -191,15 +191,21 @@ jobs:
           sys.exit(1 if bad else 0)
           PY
       - name: builtin workflows, agents, runtimes and skills all load
+        # These are project-scoped commands, so the checkout needs to be a project
+        # first - the same `devforge init` any user runs before them.
         run: |
+          devforge init
           devforge workflows
           devforge runtimes
           devforge skills
           devforge assistants
           devforge versions
       - name: registry, radar and eval catalogues load
+        # The skill registry is a repository artefact, not package data - this is
+        # the job that runs in a checkout, so this is where it is checked.
         run: |
           devforge registry list
+          devforge registry verify
           devforge eval configs
           devforge eval cases
           devforge falsify list
@@ -288,7 +294,7 @@ jobs:
           devforge skills
           devforge assistants
           devforge plan --workflow demo --task "smoke test"
-      - name: context, security, registry, continuous and platform surfaces
+      - name: context, security, skills, continuous and platform surfaces
         run: |
           cd "$RUNNER_TEMP/smoke"
           devforge index
@@ -298,7 +304,6 @@ jobs:
           devforge security audit .
           devforge security sbom . --out sbom.json
           devforge security report . --out security-report.md
-          devforge registry list
           devforge skill list
           devforge skill radar
           devforge continuous detect
@@ -309,6 +314,23 @@ jobs:
           devforge falsify corpus
           devforge platform status
           devforge platform protocol
+      - name: the missing registry is reported, not guessed at
+        # A wheel is not a checkout, and the skill registry lives in the repository.
+        # The promise is that DevForge says where it looked rather than answering
+        # from an empty catalogue, so that is what is asserted here.
+        run: |
+          cd "$RUNNER_TEMP/smoke"
+          if devforge registry list > registry.out 2>&1; then
+            echo "::error::registry list unexpectedly succeeded outside a checkout"
+            exit 1
+          fi
+          cat registry.out
+          # The message is rendered to the terminal width, so it is unwrapped before
+          # it is matched - the assertion is about what was said, not how it was laid
+          # out on this runner.
+          tr -s '[:space:]' ' ' < registry.out > registry.flat
+          grep -q "no skill registry found" registry.flat
+          grep -q "looked in" registry.flat
       - name: every command group answers --help
         # A Typer group that cannot build its help is broken for everyone, and it
         # is the cheapest possible check that no import regressed.
