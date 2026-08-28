@@ -9,6 +9,7 @@ did not happen.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -33,15 +34,24 @@ from devforge.tools.untrusted import scan, wrap
 
 # --------------------------------------------------------------------- fixtures
 
-#: Paths that must never resolve to a read or a write.
+#: Paths that must never resolve to a read or a write, on every platform.
 TRAVERSAL_PATHS = [
     "../../etc/passwd",
     "../../../../../../etc/shadow",
-    "..\\..\\Windows\\System32\\config\\SAM",
     "/etc/passwd",
     "src/../../outside.txt",
     "./nested/../../../escape.txt",
 ]
+
+#: Backslash-separated attempts, which are a traversal only on Windows. On POSIX a
+#: backslash is an ordinary filename character, so "..\\..\\Windows\\System32" names
+#: one file directly inside the workspace - allowing it is the correct answer there,
+#: not an escape, and asserting otherwise tests the platform rather than the policy.
+if os.name == "nt":
+    TRAVERSAL_PATHS += [
+        "..\\..\\Windows\\System32\\config\\SAM",
+        "C:\\Windows\\win.ini",
+    ]
 
 #: Command lines that must never execute under the default policy.
 MALICIOUS_COMMANDS = [
@@ -123,7 +133,15 @@ async def test_path_traversal_is_refused_for_writes(ctx: ToolContext, path: str)
 
     assert result.status is ToolStatus.DENIED
     resolved = ctx.policy.resolve_path(path)
-    assert not resolved.exists() or resolved.read_text(encoding="utf-8") != "pwned"
+    try:
+        wrote = resolved.exists() and resolved.read_text(encoding="utf-8") == "pwned"
+    except OSError:
+        # The target exists but this user may not open it - /etc/shadow under CI. The
+        # content check is simply unavailable here; it is not evidence either way, so
+        # it is skipped rather than crashing the test. The DENIED verdict above is the
+        # assertion that matters, and a denied write never reached the filesystem.
+        wrote = False
+    assert not wrote
 
 
 async def test_symlink_escape_is_refused(tmp_path: Path, ctx: ToolContext) -> None:

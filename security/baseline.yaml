@@ -11,7 +11,7 @@ description: >
 suppressions:
   # --- test fixtures that must contain the dangerous construct to test it -----
   - id: SEC-CODE-002
-    location: tests/test_security_phase2.py:51
+    location: tests/test_security_phase2.py:61
     reason: >
       An adversarial fixture. The test asserts that the policy engine REFUSES this
       command; the string has to exist for the refusal to be tested.
@@ -58,7 +58,7 @@ suppressions:
     accepted_by: mrbrownnn
 
   - id: SEC-SECRET-001
-    location: tests/test_security_phase2.py:78
+    location: tests/test_security_phase2.py:88
     reason: >
       A URL with embedded credentials, used to assert that redaction strips them.
       The value is fictitious and the host is .test.
