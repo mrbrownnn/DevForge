@@ -61,6 +61,23 @@ A mutant no layer can classify **stays `SURVIVED`**. Promotion to `EQUIVALENT` o
 uncertainty is how a real weakness disappears from a report, and it is the most
 dangerous shortcut available here.
 
+The static identity rule is deliberately narrow. `x * 1` and `x // 1` agree for
+integers and for nothing else - `2.5 * 1` is `2.5` where `2.5 // 1` is `2.0`, and
+`"ab" // 1` raises - so the rule fires only where the left operand is *statically*
+an integer (`len(...)`, an int literal, integer arithmetic over those). `/` is never
+an identity: it returns a float where `*` returns an int, and overflows on integers
+that `*` handles. The rule also has to be looking at the operator that was actually
+mutated, not merely one on the same line.
+
+## Concurrency
+
+`max_parallel_jobs` mutants are evaluated at once, each in its **own copy of the
+sandbox**. A mutant is judged by running the whole suite, so two mutants in one
+directory are judged by one run: whichever fault it reports gets recorded against
+both, and a mutant in an untested file is credited as killed by a fault injected
+somewhere else. Copies cost one per worker, not one per mutant. When fewer can be
+created the pool runs narrower and the report says so.
+
 ## Scope
 
 Mutation is confined to the lines the patch touched (`scope: diff`, the default).

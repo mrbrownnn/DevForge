@@ -265,6 +265,14 @@ class DifferentialStrategy(FalsificationStrategy):
         return target if result.exit_code == 0 and target.is_dir() else None
 
     async def _execute(self, ctx: FalsificationContext, argv: list[str], cwd: Any) -> str:
+        """Run one case and return everything that distinguishes the two builds.
+
+        The exit status is part of the observable behaviour and is prepended rather
+        than discarded. Comparing stdout alone called two builds equivalent whenever
+        they printed the same thing and disagreed only about whether they succeeded -
+        including the case where both merely failed to start, which compared equal
+        because both produced no output at all.
+        """
         result = await run_process(
             argv,
             cwd=cwd,
@@ -272,7 +280,10 @@ class DifferentialStrategy(FalsificationStrategy):
             allow_env=ctx.policy.permissions.process.allow_env,
             max_output_chars=ctx.policy.permissions.process.max_output_chars,
         )
-        return result.combined
+        if not result.started:
+            return f"[devforge: did not start: {result.error or 'unknown'}]"
+        status = "timed out" if result.timed_out else f"exit {result.exit_code}"
+        return f"[devforge: {status}]\n" + result.combined
 
 
 # --------------------------------------------------------------------------- comparison

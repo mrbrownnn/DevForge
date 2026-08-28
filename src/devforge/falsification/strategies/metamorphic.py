@@ -157,9 +157,31 @@ class MetamorphicStrategy(FalsificationStrategy):
                 actual=example.actual,
             )
 
-        status = StrategyStatus.FAILED if counterexamples else StrategyStatus.SURVIVED
-        if not counterexamples and usage.truncated:
+        if counterexamples:
+            status = StrategyStatus.FAILED
+        elif not outcome.passed:
+            # Red run, nothing parsed. Not a survival - see the same guard in the
+            # property strategy.
+            return self.report(
+                status=StrategyStatus.ERROR,
+                attempts=len(scheduled),
+                duration_ms=outcome.duration_ms,
+                metamorphic_cases=len(scheduled),
+                usage=usage,
+                summary=(
+                    "the generated relation module failed but reported no violation "
+                    f"this strategy could read (exit {outcome.exit_code})"
+                ),
+                limitations=[
+                    "metamorphic: the relation run failed without a parsable "
+                    "violation, so no verdict about the implementation can be drawn",
+                    f"metamorphic: {self.excerpt(outcome.output, 800)}",
+                ],
+            )
+        elif usage.truncated:
             status = StrategyStatus.INCOMPLETE
+        else:
+            status = StrategyStatus.SURVIVED
 
         limitations = [
             f"metamorphic: only the {len(scheduled)} declared relation(s) were "
@@ -234,10 +256,15 @@ class MetamorphicStrategy(FalsificationStrategy):
             f"    import {module} as target",
             f"    value = {value}",
             f"    _appended = {appended}",
-            f"    original = target.{call}(value)",
             f"    transformed_input = {TRANSFORMATIONS[transformation]}",
-            f"    transformed = target.{call}(transformed_input)",
+            # Both calls belong inside the try. A relation whose transformed input
+            # makes the implementation raise is a finding, not a reason to skip
+            # printing one - and leaving the calls outside meant exactly that.
+            "    original = None",
+            "    transformed = None",
             "    try:",
+            f"        original = target.{call}(value)",
+            f"        transformed = target.{call}(transformed_input)",
             f"        holds = bool({expression})",
             "    except Exception as exc:",
             "        holds = False",
