@@ -53,6 +53,157 @@ jobs:
       - name: pytest
         run: python -m pytest -q
 
+  degraded:
+    # The mirror of the matrix above: a bare install with none of the optional
+    # extras. Every subsystem that can degrade has a "not available, and here is
+    # why" branch, and that branch only runs when the extra is absent.
+    name: degraded install (no extras)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - name: confirm no optional extra leaked in
+        run: |
+          python - <<'PY'
+          import importlib.util
+          found = [name for name in ("hypothesis", "PIL", "numpy", "playwright")
+                   if importlib.util.find_spec(name) is not None]
+          assert not found, f"this job must run bare, but found: {found}"
+          print("bare install confirmed")
+          PY
+      - name: pytest
+        run: python -m pytest -q
+
+  coverage:
+    # Coverage is measured, printed and kept as an artefact. It deliberately does
+    # not gate: a percentage threshold buys tests written to move a number.
+    name: coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev,falsification,visual]"
+      - name: pytest with coverage
+        run: |
+          python -m pytest -q \
+            --cov=devforge --cov-report=term-missing:skip-covered \
+            --cov-report=xml:coverage.xml --cov-report=html:htmlcov
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: |
+            coverage.xml
+            htmlcov/
+          retention-days: 14
+
+  security:
+    # DevForge ships a Security Center. A project that scans other repositories
+    # and never runs its own scanner in CI is asking for trust it has not earned.
+    # `scan` and `audit` exit 1 on a blocking finding, so this job fails exactly
+    # when DevForge breaches the bar it sets for everyone else.
+    name: security (self-scan)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - name: scan the tree
+        run: devforge security scan . --show-suppressed
+      - name: audit the declared controls
+        run: devforge security audit .
+      - name: threat model renders
+        run: devforge security threats --json > threats.json
+      - name: inventory and full report
+        run: |
+          devforge security sbom . --out sbom.json
+          devforge security report . --out security-report.md
+      - name: baseline acceptances are all still live
+        # An expired acceptance is itself a finding, so the scan above already
+        # fails on one. This step says so out loud, with dates, rather than
+        # leaving the reason buried in a table.
+        run: |
+          python - <<'PY'
+          from datetime import date
+          from devforge.security.baseline import load_baseline
+          baseline = load_baseline(".")
+          expired = baseline.expired(date.today())
+          for entry in expired:
+              print(f"EXPIRED: {entry.id} at {entry.location} (expired {entry.expires})")
+          print(f"{len(baseline.suppressions)} acceptance(s), {len(expired)} expired")
+          raise SystemExit(1 if expired else 0)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-reports
+          path: |
+            sbom.json
+            security-report.md
+            threats.json
+          retention-days: 30
+
+  assets:
+    # The builtin YAML and Markdown assets, the registry, the radar feeds and the
+    # eval configs are data the runtime loads by name. A typo in any of them is a
+    # runtime failure in someone else's project, so parse them all here.
+    name: shipped data parses
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - name: every YAML and JSON file in the tree parses
+        run: |
+          python - <<'PY'
+          import json, pathlib, sys, yaml
+          skip = {".git", "build", "dist", ".venv", "node_modules", "__pycache__"}
+          bad = []
+          for path in pathlib.Path(".").rglob("*"):
+              if not path.is_file() or skip & set(path.parts):
+                  continue
+              try:
+                  if path.suffix in {".yaml", ".yml"}:
+                      list(yaml.safe_load_all(path.read_text(encoding="utf-8")))
+                  elif path.suffix == ".json":
+                      json.loads(path.read_text(encoding="utf-8"))
+                  else:
+                      continue
+              except Exception as exc:
+                  bad.append(f"{path}: {exc}")
+          print("\n".join(bad) or "all YAML/JSON parses")
+          sys.exit(1 if bad else 0)
+          PY
+      - name: builtin workflows, agents, runtimes and skills all load
+        run: |
+          devforge workflows
+          devforge runtimes
+          devforge skills
+          devforge assistants
+          devforge versions
+      - name: registry, radar and eval catalogues load
+        run: |
+          devforge registry list
+          devforge eval configs
+          devforge eval cases
+          devforge falsify list
+
   package:
     # Guards the thing that silently breaks: builtin YAML/Markdown assets and the
     # licence are package data, and a wheel missing them installs and then fails
@@ -85,15 +236,101 @@ jobs:
           assert not missing, f"wheel is missing: {missing}"
           print(f"{wheel}: {len(names)} entries, all required assets present")
           PY
-      - name: installs clean and runs
-        # Installed from the wheel into an empty venv, in a directory that is not
-        # the source tree - the shape of a real user's first five minutes.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
+
+  smoke:
+    # The wheel, installed on every supported OS and driven across the whole CLI
+    # surface from a directory that is not the source tree: the shape of a real
+    # user's first hour. Packaging bugs and path bugs both surface here, and
+    # neither surfaces in an editable install on Linux alone.
+    name: smoke ${{ matrix.os }}
+    needs: package
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: install from the wheel
+        run: pip install --quiet dist/*.whl
+      # There is no checkout in this job on purpose: nothing below may depend on
+      # the source tree being present.
+      - name: a fresh project, from nothing
         run: |
-          python -m venv /tmp/fresh
-          /tmp/fresh/bin/pip install --quiet dist/*.whl
-          mkdir -p /tmp/smoke && cd /tmp/smoke
-          /tmp/fresh/bin/devforge --version
-          /tmp/fresh/bin/devforge init
-          /tmp/fresh/bin/devforge workflows
-          /tmp/fresh/bin/devforge doctor
-          /tmp/fresh/bin/devforge plan --workflow demo --task "smoke test"
+          mkdir -p "$RUNNER_TEMP/smoke" && cd "$RUNNER_TEMP/smoke"
+          git init -q .
+          git config user.email ci@devforge.test
+          git config user.name devforge-ci
+          printf 'def add(a, b):\n    return a + b\n' > app.py
+          git add -A && git commit -qm "initial"
+
+          devforge --version
+          devforge versions
+          devforge init
+          devforge doctor
+          devforge workflows
+          devforge runtimes
+          devforge skills
+          devforge assistants
+          devforge plan --workflow demo --task "smoke test"
+      - name: context, security, registry, continuous and platform surfaces
+        run: |
+          cd "$RUNNER_TEMP/smoke"
+          devforge index
+          devforge context "add a subtraction helper"
+          devforge context-doctor
+          devforge security scan .
+          devforge security audit .
+          devforge security sbom . --out sbom.json
+          devforge security report . --out security-report.md
+          devforge registry list
+          devforge skill list
+          devforge skill radar
+          devforge continuous detect
+          devforge continuous backlog
+          devforge eval configs
+          devforge eval cases
+          devforge falsify list
+          devforge falsify corpus
+          devforge platform status
+          devforge platform protocol
+      - name: every command group answers --help
+        # A Typer group that cannot build its help is broken for everyone, and it
+        # is the cheapest possible check that no import regressed.
+        run: |
+          cd "$RUNNER_TEMP/smoke"
+          for group in registry skill security eval falsify git continuous platform; do
+            devforge "$group" --help > /dev/null
+          done
+          devforge --help > /dev/null
+          echo "all command groups respond"
+
+  ci-ok:
+    # One required check to protect the branch with, instead of pinning a branch
+    # rule to twenty job names that change whenever the matrix does.
+    name: ci ok
+    runs-on: ubuntu-latest
+    needs: [lint, test, degraded, coverage, security, assets, package, smoke]
+    if: always()
+    steps:
+      - name: every job succeeded
+        run: |
+          echo "result: ${{ join(needs.*.result, ', ') }}"
+          if [[ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            exit 1
+          fi
