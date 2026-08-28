@@ -112,6 +112,11 @@ class MutationCandidate:
     mutated: str
     source: str
     target: str = "behavior"
+    #: Column of the rewritten token within its line, or ``-1`` when the operator
+    #: rewrote a whole expression rather than one token. The equivalence layers need
+    #: it: a line can hold several operators, and reasoning about the wrong one is
+    #: how a real surviving mutant gets dismissed as equivalent.
+    col: int = -1
 
     @property
     def describe(self) -> str:
@@ -134,16 +139,41 @@ def generate(
         # failing a run over - it is reported by the caller as a skipped file.
         return []
 
+    docstrings = _docstring_nodes(tree)
     candidates: list[MutationCandidate] = []
     for node in ast.walk(tree):
         line = getattr(node, "lineno", None)
         if line is None or (lines is not None and line not in lines):
+            continue
+        if id(node) in docstrings:
+            # Blanking a docstring is not an injected fault. It survives every suite
+            # ever written, and reporting that as a test weakness is how a report
+            # earns the reputation of being noise.
             continue
         candidates.extend(_mutations_for(node, source, filename))
 
     # Stable order: by line, then operator, so a run is reproducible and two runs of
     # the same patch generate the same mutants in the same order.
     return sorted(candidates, key=lambda c: (c.line, c.operator, c.mutated))
+
+
+def _docstring_nodes(tree: ast.AST) -> set[int]:
+    """Ids of the string constants that are docstrings rather than data."""
+    found: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        body = getattr(node, "body", None)
+        if not body:
+            continue
+        first = body[0]
+        if (
+            isinstance(first, ast.Expr)
+            and isinstance(first.value, ast.Constant)
+            and isinstance(first.value.value, str)
+        ):
+            found.add(id(first.value))
+    return found
 
 
 def _mutations_for(node: ast.AST, source: str, filename: str) -> list[MutationCandidate]:
@@ -396,6 +426,7 @@ def _swap_operator(
             mutated=replacement_text,
             source=source[:start] + replacement_text + source[end:],
             target=OPERATOR_TARGETS[operator],
+            col=column,
         )
     ]
 

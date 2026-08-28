@@ -227,6 +227,62 @@ def _copy_sandbox(source_root: Path, run_id: str) -> Sandbox:
     )
 
 
+@dataclass
+class Lane:
+    """One concurrent worker's private copy of a sandbox.
+
+    Mutation testing writes a mutant to disk and then runs the whole suite. Two
+    mutants sharing one directory therefore share one test run: whichever fault the
+    suite reports, *both* are recorded against it. A mutant in an untested file gets
+    credited as killed by a mutant in a tested one, and the score comes out higher
+    than the suite deserves.
+
+    A lane is the fix. Each concurrent job owns a directory nothing else writes to,
+    so a verdict is about exactly one injected fault. ``primary`` marks the sandbox
+    root itself, which is lent out as lane 0 and must never be deleted here.
+    """
+
+    root: Path
+    primary: bool = False
+    temp_dir: Path | None = None
+
+    def release(self) -> None:
+        if self.primary or self.temp_dir is None:
+            return
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+
+def open_lanes(root: Path, count: int) -> tuple[list[Lane], str]:
+    """``count`` independent workspaces, and a note when fewer were obtained.
+
+    Lane 0 is the sandbox itself; every other lane is a filtered copy of it. Copies
+    are made once per *worker*, not once per mutant, so the cost is bounded by the
+    parallelism rather than by the number of mutants.
+
+    A copy that fails is not an error: the pool simply runs narrower, which is slower
+    and still correct. Silently running wider than the number of lanes obtained would
+    be the one outcome that is neither.
+    """
+    root = Path(root)
+    lanes = [Lane(root=root, primary=True)]
+    if count <= 1:
+        return lanes, ""
+
+    for index in range(1, count):
+        try:
+            temp_root = Path(tempfile.mkdtemp(prefix=f"devforge-lane{index}-"))
+            destination = temp_root / root.name
+            shutil.copytree(root, destination, ignore=_ignore, symlinks=False)
+        except (OSError, shutil.Error) as exc:
+            # Keep the lanes already obtained; the caller reports the shortfall.
+            return lanes, (
+                f"only {len(lanes)} of {count} parallel workspace(s) could be created "
+                f"({exc}); mutants were evaluated with less parallelism"
+            )
+        lanes.append(Lane(root=destination, temp_dir=temp_root))
+    return lanes, ""
+
+
 def _ignore(directory: str, names: list[str]) -> set[str]:
     from fnmatch import fnmatch
 

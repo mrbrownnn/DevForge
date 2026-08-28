@@ -31,6 +31,11 @@ _FAILURE_PATTERNS = (
 #: recorded as a killed mutant.
 PYTEST_TESTS_FAILED = 1
 PYTEST_NO_TESTS = 5
+#: Interrupted, internal error, usage error. The runner did not finish, so it
+#: produced no verdict about the code - which is a different fact from "the tests
+#: failed" and must not be recorded as one. A collection error in a generated test
+#: reads as exit 2, and treating that as a failing test manufactures findings.
+PYTEST_RUNNER_ERRORS = frozenset({2, 3, 4})
 
 
 @dataclass
@@ -116,6 +121,18 @@ async def run_tests(
             output=result.combined,
             timed_out=True,
             error=f"the test suite timed out after {timeout_s}s",
+        )
+
+    if result.exit_code in PYTEST_RUNNER_ERRORS:
+        return TestOutcome(
+            passed=False,
+            exit_code=result.exit_code,
+            duration_ms=result.duration_ms,
+            output=result.combined,
+            error=(
+                f"the test runner did not complete (exit {result.exit_code}): a "
+                "collection, usage or internal error, not a test failure"
+            ),
         )
 
     if result.exit_code == PYTEST_NO_TESTS:
