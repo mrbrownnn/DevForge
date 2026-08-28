@@ -1,0 +1,182 @@
+name: Release
+
+# CD. A tag is the trigger because a tag is the thing a user can point at: the
+# artefacts published here are built from exactly the commit the tag names, and
+# nothing else can start a publish.
+#
+# `workflow_dispatch` runs everything except the two publishing steps, so the
+# release path is exercised before anyone relies on it working. A CD pipeline
+# first run on the day of the release is not a pipeline, it is a hope.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and verify only; publish nothing."
+        type: boolean
+        default: true
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build and verify
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install build twine
+
+      - name: the tag and the packaged version agree
+        id: version
+        # A tag that disagrees with pyproject publishes a version nobody can find
+        # again from the source. Cheap to check, expensive to discover later.
+        run: |
+          version="$(python -c 'import tomllib;print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "packaged version: $version"
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            tag="${GITHUB_REF#refs/tags/v}"
+            if [[ "$tag" != "$version" ]]; then
+              echo "::error::tag v$tag does not match pyproject version $version"
+              exit 1
+            fi
+            echo "tag v$tag matches"
+          fi
+
+      - run: python -m build
+      - run: twine check dist/*
+
+      - name: wheel carries its assets and licence
+        # The same guard CI runs, repeated here on purpose: this is the artefact
+        # that actually reaches users, and it is built by a different job.
+        run: |
+          python - <<'PY'
+          import glob, tomllib, zipfile
+          version = tomllib.load(open("pyproject.toml", "rb"))["project"]["version"]
+          wheel = glob.glob("dist/*.whl")[0]
+          names = zipfile.ZipFile(wheel).namelist()
+          required = [
+              "devforge/builtin/workflows/feature.yaml",
+              "devforge/builtin/agents/coder.yaml",
+              "devforge/builtin/runtimes/codex-cli.yaml",
+              "devforge/builtin/skills/backend/SKILL.md",
+              f"devforge-{version}.dist-info/licenses/LICENSE",
+          ]
+          missing = [r for r in required if r not in names]
+          assert not missing, f"wheel is missing: {missing}"
+          print(f"{wheel}: {len(names)} entries, all required assets present")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 30
+
+  smoke:
+    # The release candidate, installed on every supported OS and every supported
+    # interpreter, driven from a directory that is not the source tree. Nothing is
+    # published until this passes.
+    name: smoke ${{ matrix.os }} py${{ matrix.python }}
+    needs: build
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.11", "3.12", "3.13"]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - run: pip install --quiet dist/*.whl
+      - name: the installed package works from an empty directory
+        run: |
+          mkdir -p "$RUNNER_TEMP/rc" && cd "$RUNNER_TEMP/rc"
+          git init -q .
+          git config user.email ci@devforge.test
+          git config user.name devforge-ci
+          printf 'def add(a, b):\n    return a + b\n' > app.py
+          git add -A && git commit -qm "initial"
+
+          devforge --version
+          devforge versions
+          devforge init
+          devforge doctor
+          devforge workflows
+          devforge runtimes
+          devforge skills
+          devforge plan --workflow demo --task "release smoke"
+          devforge index
+          devforge security scan .
+          devforge security audit .
+          devforge security sbom . --out sbom.json
+
+  github-release:
+    name: github release
+    needs: [build, smoke]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: publish the release with its artefacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/* --clobber
+          else
+            gh release create "$tag" dist/* \
+              --title "DevForge $tag" \
+              --generate-notes \
+              --verify-tag
+          fi
+
+  pypi:
+    name: publish to PyPI
+    needs: [build, smoke]
+    # Trusted publishing has to be configured on PyPI for this repository before
+    # this can work, so it is opt-in: set the repository variable
+    # PYPI_TRUSTED_PUBLISHING to "true" once the publisher exists. Until then the
+    # job is skipped rather than failing every release.
+    if: startsWith(github.ref, 'refs/tags/v') && vars.PYPI_TRUSTED_PUBLISHING == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/devforge
+    permissions:
+      # OIDC for trusted publishing: no long-lived API token is stored anywhere.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
