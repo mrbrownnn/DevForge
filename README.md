@@ -5,6 +5,7 @@
 ### AI coding agents say "Done ✅". DevForge is the part that checks.
 
 [![CI](https://github.com/mrbrownnn/DevForge/actions/workflows/ci.yml/badge.svg)](https://github.com/mrbrownnn/DevForge/actions/workflows/ci.yml)
+[![Release](https://github.com/mrbrownnn/DevForge/actions/workflows/release.yml/badge.svg)](https://github.com/mrbrownnn/DevForge/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%20|%203.12%20|%203.13-blue.svg)](https://www.python.org/downloads/)
 [![Tests](https://img.shields.io/badge/tests-1%2C000%2B%20passing-brightgreen.svg)](#development)
@@ -54,15 +55,30 @@ test suite says so.
 
 ---
 
-## Quick start (2 minutes)
+## Installation
 
-Requires Python 3.11+.
+Requires Python 3.11+. No API key is needed to try it: the default runtime is
+`mock`, which is offline and deterministic.
 
 ```bash
 git clone https://github.com/mrbrownnn/DevForge.git
 cd DevForge
 pip install -e ".[dev]"
 ```
+
+Optional extras, each of which turns a documented `unavailable` into a working
+feature rather than into a guess:
+
+```bash
+pip install -e ".[browser]"        # Playwright browser tools
+pip install -e ".[falsification]"  # Hypothesis property testing
+pip install -e ".[visual]"         # Pillow + numpy pixel corroboration
+```
+
+---
+
+## Quick start (2 minutes)
+
 
 Then go to any project you like — even an empty folder:
 
@@ -195,8 +211,50 @@ data, and a workflow that needs it halts with the reason. Visual checks report
 | 🛡️ **Security Center** | Threat model, posture audit, secret scanning, SBOM. |
 | 🌱 **Works with your assistant** | Installs its skills into 13 coding assistants — Cursor, Claude Code, Copilot, Windsurf, Gemini, Codex and more. |
 
-Full command list: **[docs/cli.md](docs/cli.md)** · Exit codes: `0` success, `1`
-failure, `2` paused for approval. Every command supports `--json`.
+Exit codes: `0` success, `1` failure, `2` paused for approval. Most commands
+support `--json`.
+
+---
+
+## CLI
+
+Every command, with the one thing it is for. Details and flags:
+**[docs/cli.md](docs/cli.md)**.
+
+| Command | What it does |
+|---|---|
+| `devforge init` | Create the `.devforge` state directory, and optionally wire up an assistant |
+| `devforge doctor` | Check the project and environment, and report what is unavailable |
+| `devforge plan` | Show what a workflow would do, without running anything |
+| `devforge run` | Execute a workflow, or resume one that is waiting |
+| `devforge status` | Show the state of a run |
+| `devforge review` | Show what the agents produced and how it verified |
+| `devforge verify` | Run verifiers against the working tree, outside any run |
+| `devforge approve` | Approve or reject a pending gate |
+| `devforge workflows` | List available workflows |
+| `devforge runtimes` | List agent runtimes and whether they are usable here |
+| `devforge skills` | List discoverable skills |
+| `devforge inspect-skill` | Statically inspect an untrusted skill directory — nothing is executed |
+| `devforge index` | Build or refresh the codebase index; stores structure, not source |
+| `devforge context` | Show the context pack for a task, without running anything |
+| `devforge context-doctor` | Report whether the index still matches the working tree |
+| `devforge assistants` | List the coding assistants DevForge can install its skills into |
+| `devforge update` | Refresh generated assistant files from this installed package |
+| `devforge versions` | Show the installed version and the bundled assets it ships |
+| `devforge bench` | Measure repair success rate against the seeded-defect benchmark |
+
+Command groups, each with its own subcommands:
+
+| Group | What it covers |
+|---|---|
+| `devforge falsify` | Search adversarially for counterexamples — mutation, property, adversarial, differential, metamorphic |
+| `devforge security` | Security scanning, configuration audit and reporting |
+| `devforge skill` | Discover, install and audit third-party skills |
+| `devforge registry` | Inspect the third-party skill source registry |
+| `devforge git` | Git-native engineering: worktrees, screened commits, PR artifacts |
+| `devforge eval` | Measure DevForge against benchmark cases with known answers |
+| `devforge platform` | Control plane and workers: submit a task, dispatch it, audit what happened |
+| `devforge continuous` | Find engineering work nobody has filed yet, and propose it |
 
 ---
 
@@ -442,18 +500,16 @@ Stated plainly, because a harness that hides its gaps is worse than useless.
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest -q     # 1,098 tests, no network, no paid API calls
+python -m pytest -q     # 1,103 tests, no network, no paid API calls
 ruff check .
 ```
 
-Optional extras, each of which turns a documented `unavailable` into a working
-feature:
+The optional extras are listed under [Installation](#installation).
 
-```bash
-pip install -e ".[browser]"        # Playwright browser tools
-pip install -e ".[falsification]"  # Hypothesis property testing
-pip install -e ".[visual]"         # Pillow + numpy pixel corroboration
-```
+CI runs the suite on Linux, macOS and Windows across Python 3.11-3.13, with the
+extras and again on a bare install, then builds the wheel and drives the whole CLI
+surface from it on each OS - and runs DevForge's own security scanner against
+DevForge. See **[what CI runs](docs/contributing.md#what-ci-runs)**.
 
 Contributions welcome — see **[docs/contributing.md](docs/contributing.md)** and
 the design rules in **[docs/principles.md](docs/principles.md)**.

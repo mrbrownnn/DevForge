@@ -174,11 +174,6 @@ class BrowserTool(Tool):
         if action not in self.actions:
             return self.unknown_action(action)
 
-        available, detail = playwright_available()
-        if not available:
-            ctx.logger.warn("tool.unavailable", tool=self.name, action=action, reason=detail)
-            return self.unavailable(action, detail)
-
         problems = validate_params(self.descriptor.schema_for(action), params)
         if problems:
             return self.fail(action, "; ".join(problems))
@@ -212,6 +207,16 @@ class BrowserTool(Tool):
             reason = verdict.reason or reason
             ctx.logger.warn("tool.denied", tool=self.name, action=action, url=url, reason=reason)
             return self.fail_denied(action, reason)
+
+        # Availability is checked *after* the policy verdict. Whether a URL may be
+        # fetched does not depend on whether a driver happens to be installed, and
+        # answering "unavailable" to a request policy forbids reports the weaker
+        # fact: it hides a refusal behind a missing dependency, and the refusal is
+        # the one the caller needs to hear.
+        available, detail = playwright_available()
+        if not available:
+            ctx.logger.warn("tool.unavailable", tool=self.name, action=action, reason=detail)
+            return self.unavailable(action, detail)
 
         # Writing a screenshot is a filesystem write and is checked as one.
         target_path = None

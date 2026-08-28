@@ -104,6 +104,12 @@ def extract_test_failures(text: str) -> str:
     return "\n".join(dict.fromkeys(kept))[:MAX_ITEM_CHARS]
 
 
+#: How many environment variable names one runtime-state record lists. Bounded so a
+#: CI environment with hundreds of variables does not bury the rest of the record;
+#: the count and an explicit "not listed" note keep the truncation visible.
+MAX_ENV_NAMES = 60
+
+
 @dataclass
 class EvidenceCollector:
     """Gathers evidence for one defect, under one policy.
@@ -259,7 +265,14 @@ class EvidenceCollector:
             if name in os.environ:
                 lines.append(f"env {name}: {os.environ[name]}")
         names = sorted(os.environ)
-        lines.append(f"env variables present ({len(names)}), names only: {', '.join(names[:60])}")
+        shown = names[:MAX_ENV_NAMES]
+        listing = ", ".join(shown)
+        if len(names) > len(shown):
+            # Say that the list was cut. A bare list reads as the whole environment,
+            # and "the name is not here" would then be read as "the variable is not
+            # set" - a different claim, and one this never checked.
+            listing += f", ... ({len(names) - len(shown)} more not listed)"
+        lines.append(f"env variables present ({len(names)}), names only: {listing}")
         for key, value in (extra or {}).items():
             lines.append(f"{key}: {value}")
         self.add(

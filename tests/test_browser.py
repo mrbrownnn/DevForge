@@ -228,6 +228,10 @@ async def test_unknown_action_is_rejected(tool_context: ToolContext) -> None:
 async def test_missing_driver_reports_unavailable_not_fabricated_content(
     tool_context: ToolContext, monkeypatch
 ) -> None:
+    # The request has to be one policy permits, or the refusal answers first - which
+    # is the correct order, and is asserted separately below.
+    tool_context.policy.permissions.network.enabled = True
+    tool_context.policy.permissions.network.allow_hosts = ["example.com"]
     monkeypatch.setattr(
         "devforge.tools.browser.playwright_available",
         lambda: (False, "playwright is not installed"),
@@ -237,6 +241,31 @@ async def test_missing_driver_reports_unavailable_not_fabricated_content(
 
     assert result.status is ToolStatus.UNAVAILABLE
     assert result.output == ""
+
+
+async def test_a_refused_url_is_denied_even_when_the_driver_is_missing(
+    tool_context: ToolContext, monkeypatch
+) -> None:
+    """"We could not check" must not stand in for "policy forbids this".
+
+    Whether a URL may be fetched does not depend on whether a driver is installed.
+    Reporting UNAVAILABLE for a request policy refuses hides the refusal behind a
+    missing dependency, and the refusal is the fact the caller needs.
+    """
+    monkeypatch.setattr(
+        "devforge.tools.browser.playwright_available",
+        lambda: (False, "playwright is not installed"),
+    )
+
+    disabled = await BrowserTool().invoke("text", {"url": "https://example.com"}, tool_context)
+    assert disabled.status is ToolStatus.DENIED
+    assert "network access is disabled" in disabled.error
+
+    tool_context.policy.permissions.network.enabled = True
+    blocked = await BrowserTool().invoke(
+        "text", {"url": "http://169.254.169.254/latest/meta-data/"}, tool_context
+    )
+    assert blocked.status is ToolStatus.DENIED
 
 
 def test_descriptor_declares_its_risk_and_gates() -> None:

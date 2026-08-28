@@ -25,3 +25,8 @@ secrets/
 # when it is the baseline an investigation refers to.
 reports/*.json
 reports/workspaces/
+
+# Coverage output is a build artefact.
+.coverage
+coverage.xml
+htmlcov/

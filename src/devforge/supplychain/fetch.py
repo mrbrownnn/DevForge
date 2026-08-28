@@ -109,6 +109,23 @@ def _measure(root: Path) -> tuple[int, int]:
     return files, total
 
 
+def _relative_name(path: Path, root: Path) -> str:
+    """A symlink's own path relative to the checkout, without following the link.
+
+    ``resolve()`` on the link itself would follow it out of the tree, which is the
+    one thing this listing must not do. The parent - a real directory inside the
+    checkout - is resolved instead and the link's name appended, so both sides of
+    the comparison are in the same form. That matters on Windows, where the same
+    directory is handed out as ``RUNNER~1`` in one place and ``runneradmin`` in
+    another and a plain ``relative_to`` raises ``ValueError`` on a path that is
+    plainly inside the tree.
+    """
+    try:
+        return (path.parent.resolve() / path.name).relative_to(root.resolve()).as_posix()
+    except ValueError:  # pragma: no cover - defensive; the caller already bounded it
+        return path.name
+
+
 def _strip_git_metadata(root: Path) -> None:
     """Remove .git before hashing.
 
@@ -170,15 +187,20 @@ async def fetch_git_source(
                 "Refusing to install a tree that is not the one that was reviewed."
             )
 
+        # Resolved once and reused. On Windows a temporary directory is often handed
+        # out in 8.3 short form (``RUNNER~1``) while rglob yields the long form
+        # (``runneradmin``), and mixing the two makes relative_to raise ValueError on
+        # paths that are plainly inside the checkout.
+        checkout_root = checkout.resolve()
         skill_root = (checkout / subpath).resolve()
-        if checkout.resolve() != skill_root and checkout.resolve() not in skill_root.parents:
+        if checkout_root != skill_root and checkout_root not in skill_root.parents:
             raise FetchError(f"subpath {subpath!r} escapes the cloned repository")
         if not skill_root.is_dir():
             raise FetchError(f"path {subpath!r} does not exist in {repository} at {resolved[:8]}")
 
         warnings: list[str] = []
         symlinks = [
-            p.relative_to(checkout).as_posix() for p in skill_root.rglob("*") if p.is_symlink()
+            _relative_name(p, checkout_root) for p in skill_root.rglob("*") if p.is_symlink()
         ]
         if symlinks:
             # A symlink in a fetched tree can point anywhere once installed.

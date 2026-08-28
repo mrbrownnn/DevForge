@@ -11,6 +11,7 @@ clone minus the transport.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -776,3 +777,56 @@ def test_skill_search_renders_the_shipped_catalogue(tmp_path, monkeypatch) -> No
 
     assert result.exit_code == 0, result.stdout
     assert "test-driven-development" in result.stdout
+
+
+def _short_path(path: Path) -> Path | None:
+    """The 8.3 short form of ``path``, when Windows still hands one out."""
+    if os.name != "nt":
+        return None
+    import ctypes
+
+    buffer = ctypes.create_unicode_buffer(1024)
+    length = ctypes.windll.kernel32.GetShortPathNameW(str(path), buffer, 1024)
+    if not length or buffer.value == str(path):
+        return None
+    return Path(buffer.value)
+
+
+def test_relative_name_is_independent_of_how_the_root_was_spelled(tmp_path: Path) -> None:
+    """The listing must not depend on which spelling of a directory it was handed.
+
+    ``relative_to`` compares strings. Two spellings of one directory - a path with a
+    ``..`` in it, or Windows' 8.3 short form - make it raise ValueError on a path
+    that is plainly inside the tree. That aborted ``fetch_git_source`` part-way, so
+    the symlinks it was in the middle of stripping were never removed.
+    """
+    from devforge.supplychain.fetch import _relative_name
+
+    root = tmp_path / "checkout"
+    (root / "skills" / "x").mkdir(parents=True)
+    target = root / "skills" / "x" / "escape"
+    target.write_text("x", encoding="utf-8")
+
+    indirect = root / "skills" / ".." / "skills" / "x" / "escape"
+    assert _relative_name(indirect, root.resolve()) == "skills/x/escape"
+
+
+def test_relative_name_handles_the_windows_short_path_form(tmp_path: Path) -> None:
+    """The exact CI failure: root as ``RUNNER~1``, entries as ``runneradmin``."""
+    from devforge.supplychain.fetch import _relative_name
+
+    short_tmp = _short_path(tmp_path)
+    if short_tmp is None:
+        pytest.skip("8.3 short paths are not available in this environment")
+
+    root = tmp_path / "checkout"
+    (root / "skills" / "x").mkdir(parents=True)
+    target = root / "skills" / "x" / "escape"
+    target.write_text("x", encoding="utf-8")
+
+    # Deliberately NOT resolved: the short form is what the caller was holding, and
+    # resolving it here would remove the very mismatch this pins.
+    short_root = short_tmp / "checkout"
+    assert str(short_root) != str(root), "the two spellings must actually differ"
+
+    assert _relative_name(target, short_root) == "skills/x/escape"
