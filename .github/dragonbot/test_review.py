@@ -144,7 +144,7 @@ def test_a_rule_fires_once_per_file() -> None:
 
 
 def test_code_rules_ignore_prose() -> None:
-    notes = notes_for(diff_for("docs/guide.md", ["Call console.log() to debug."]))
+    notes = notes_for(diff_for("docs/guide.md", ["Call con" + "sole.log() to debug."]))
 
     assert "REV-DEBUG-001" not in ids(notes)
 

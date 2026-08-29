@@ -173,7 +173,7 @@ DEBUG_PATTERNS = (
     (re.compile(r"\bbreakpoint\s*\("), "breakpoint()"),  # dragonbot: ignore
     (re.compile(r"\b(?:pdb|ipdb|pudb)\.set_trace\s*\("), "set_trace()"),
     (re.compile(r"^\s*debugger\s*;?\s*$"), "debugger"),
-    (re.compile(r"\bconsole\.(?:log|debug|dir)\s*\("), "console.log()"),
+    (re.compile(r"\bconsole\.(?:log|debug|dir)\s*\("), "console.log()"),  # dragonbot: ignore
 )
 
 #: An inline escape hatch, honoured by every line rule. A reviewer that cannot be
@@ -830,12 +830,17 @@ def read_diff(args) -> str:
         ["git", "diff", "--no-color", f"{base}...{head}"],
         cwd=args.repo,
         capture_output=True,
-        text=True,
+        # Explicit, and lenient. A diff is bytes: it carries whatever the files
+        # carry, and `text=True` alone decodes with the locale encoding - which on
+        # a Windows console is cp1252, where one emoji in one changed line is a
+        # traceback instead of a review.
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     if completed.returncode != 0:
-        raise SystemExit(f"git diff {base}...{head} failed: {completed.stderr.strip()}")
-    return completed.stdout
+        raise SystemExit(f"git diff {base}...{head} failed: {(completed.stderr or '').strip()}")
+    return completed.stdout or ""
 
 
 def main(argv=None) -> int:
