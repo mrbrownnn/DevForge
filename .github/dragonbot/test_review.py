@@ -127,7 +127,7 @@ def test_a_placeholder_is_not_a_leak() -> None:
 def test_unsafe_code_debug_and_swallowed_exception() -> None:
     lines = [
         "    " + "ev" + "al(payload)",
-        "    breakpoint()",
+        "    break" + "point()",
         "    except Exception: pass",
     ]
 
@@ -138,13 +138,13 @@ def test_unsafe_code_debug_and_swallowed_exception() -> None:
 
 def test_a_rule_fires_once_per_file() -> None:
     """Eleven copies of one sentence teaches a reviewer to scroll past all of them."""
-    notes = notes_for(diff_for("src/a.py", ["# TODO: a"] * 11))
+    notes = notes_for(diff_for("src/a.py", ["# TO" + "DO: a"] * 11))
 
     assert len([n for n in notes if n.id == "REV-TODO-001"]) == 1
 
 
 def test_code_rules_ignore_prose() -> None:
-    notes = notes_for(diff_for("docs/guide.md", ["Call console.log() to debug."]))
+    notes = notes_for(diff_for("docs/guide.md", ["Call con" + "sole.log() to debug."]))
 
     assert "REV-DEBUG-001" not in ids(notes)
 
@@ -161,6 +161,35 @@ def test_workflow_rules_catch_the_token_grants() -> None:
 
     assert {"REV-CI-002", "REV-CI-003", "REV-CI-004", "REV-CI-005"} <= ids(notes)
     assert {n.severity for n in notes if n.id in ("REV-CI-002", "REV-CI-003")} == {"high"}
+
+
+def test_a_number_in_a_workflow_expression_is_not_untrusted_text() -> None:
+    """A pull request number is an integer. Flagging it teaches people to ignore the rule."""
+    lines = [
+        "  group: review-${{ github.event.pull_request.number }}",
+        "    ref: ${{ github.event.pull_request.head.sha }}",
+    ]
+
+    assert "REV-CI-005" not in ids(notes_for(diff_for(".github/workflows/x.yml", lines)))
+
+
+def test_binding_untrusted_text_to_env_is_the_fix_not_the_bug() -> None:
+    """The rule must not fire on the workflow that took its own advice."""
+    lines = ["          TITLE: ${{ github.event.pull_request.title }}"]
+
+    assert "REV-CI-005" not in ids(notes_for(diff_for(".github/workflows/x.yml", lines)))
+
+
+def test_a_line_can_say_it_is_the_pattern_rather_than_an_instance() -> None:
+    """Without this the reviewer's own rule definitions are its first ten findings."""
+    lines = [
+        "    " + "break" + "point()  # dragonbot: ignore",
+        "# TO" + "DO: kept  <!-- dragonbot: ignore -->",
+    ]
+
+    fired = ids(notes_for(diff_for("src/a.py", lines)))
+
+    assert not fired & {"REV-DEBUG-001", "REV-TODO-001"}
 
 
 def test_source_without_a_test_is_noted_and_with_one_is_not() -> None:
@@ -304,7 +333,8 @@ def test_a_model_failure_is_reported_not_raised(monkeypatch: pytest.MonkeyPatch)
 
 def test_the_prompt_redacts_and_truncates() -> None:
     secret = "sk-" + "a" * 40
-    prompt, truncated = build = review.build_prompt(f"+token = '{secret}'\n" + "+x\n" * 60_000)
+    line = "+to" + "ken = " + f"'{secret}'\n"
+    prompt, truncated = build = review.build_prompt(line + "+x\n" * 60_000)
 
     assert build  # the tuple, not a bool
     assert secret not in prompt

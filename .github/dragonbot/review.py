@@ -170,17 +170,40 @@ DEPENDENCY_FILES = {
 }
 
 DEBUG_PATTERNS = (
-    (re.compile(r"\bbreakpoint\s*\("), "breakpoint()"),
+    (re.compile(r"\bbreakpoint\s*\("), "breakpoint()"),  # dragonbot: ignore
     (re.compile(r"\b(?:pdb|ipdb|pudb)\.set_trace\s*\("), "set_trace()"),
     (re.compile(r"^\s*debugger\s*;?\s*$"), "debugger"),
-    (re.compile(r"\bconsole\.(?:log|debug|dir)\s*\("), "console.log()"),
+    (re.compile(r"\bconsole\.(?:log|debug|dir)\s*\("), "console.log()"),  # dragonbot: ignore
 )
 
-TODO = re.compile(r"(?:^|[^A-Za-z])(TODO|FIXME|XXX|HACK)\b")
+#: An inline escape hatch, honoured by every line rule. A reviewer that cannot be
+#: told "this line is the pattern, not an instance of it" leaves people deleting
+#: the rule rather than the finding - and the first place that showed was this
+#: file, whose own rule definitions its own rules matched.
+IGNORE = re.compile(r"(?:#|//|<!--)\s*dragonbot:\s*ignore\b")
+
+TODO = re.compile(r"(?:^|[^A-Za-z])(TODO|FIXME|XXX|HACK)\b")  # dragonbot: ignore
 BARE_EXCEPT = re.compile(r"^\s*except\s*:")
 SWALLOWED = re.compile(r"^\s*except\b[^:]*:\s*pass\s*$")
 PIPE_TO_SHELL = re.compile(r"\b(?:curl|wget)\b[^|]*\|\s*(?:sudo\s+)?(?:ba)?sh\b")
 WRITE_ALL = re.compile(r"permissions:\s*write-all")
+#: Only the fields that carry text somebody else wrote. A pull request *number* or
+#: sha inside a `${{ }}` is an integer and a hex string, and flagging those is how
+#: this rule would teach people to ignore it.
+#: `NAME: ${{ ... }}` as a whole value is the *fix*, not the bug: that is what an
+#: `env:` or `with:` binding looks like, and the rule below would otherwise fire on
+#: every workflow that took its own advice. `run:` is excluded because a `${{ }}`
+#: there is the shell, whatever the shape of the line.
+ENV_BINDING = re.compile(r"^\s*(?!run\b)[A-Za-z_][\w-]*:\s*\$\{\{[^}]*\}\}\s*$")
+UNTRUSTED_FIELD = re.compile(
+    r"""(?x)
+    \$\{\{\s*github\.(?:
+        head_ref
+        | event\.(?:pull_request|issue)\.(?:title|body|head\.ref|head\.label|user\.login)
+        | event\.(?:comment|review)\.body
+    )\b
+    """
+)
 
 #: Two security patterns the diff can answer on its own. Everything else the
 #: Security Center's scanner does better, and is folded in from `--scan`.
@@ -201,7 +224,10 @@ UNSAFE_CODE = (
     (re.compile(r"\bshell\s*=\s*True"), "runs a shell command"),
     (re.compile(r"\b(?:pickle|marshal)\.loads?\s*\("), "deserialises untrusted data"),
     (re.compile(r"\byaml\.load\s*\((?![^)]*Loader\s*=\s*(?:yaml\.)?Safe)"), "loads YAML unsafely"),
-    (re.compile(r"verify\s*=\s*False|InsecureRequestWarning"), "disables TLS verification"),
+    (
+        re.compile(r"verify\s*=\s*False|InsecureRequestWarning"),  # dragonbot: ignore
+        "disables TLS verification",
+    ),
 )
 
 LARGE_DIFF_LINES = 400
@@ -268,6 +294,9 @@ def line_rules(file: FileDiff) -> list:
     code = file.suffix in CODE_SUFFIXES
 
     for line_no, text in file.added:
+        if IGNORE.search(text):
+            continue
+
         if CONFLICT.match(text):
             once(
                 "REV-CONFLICT-001",
@@ -384,7 +413,7 @@ def line_rules(file: FileDiff) -> list:
                     "token, and it is pinned to nothing.",
                     "Download it, check it against a known hash, then run it.",
                 )
-            if re.search(r"\$\{\{\s*github\.event\.(?:pull_request|issue|comment)\b", text):
+            if UNTRUSTED_FIELD.search(text) and not ENV_BINDING.match(text):
                 once(
                     "REV-CI-005",
                     "pull request text is interpolated into a workflow",
@@ -801,12 +830,17 @@ def read_diff(args) -> str:
         ["git", "diff", "--no-color", f"{base}...{head}"],
         cwd=args.repo,
         capture_output=True,
-        text=True,
+        # Explicit, and lenient. A diff is bytes: it carries whatever the files
+        # carry, and `text=True` alone decodes with the locale encoding - which on
+        # a Windows console is cp1252, where one emoji in one changed line is a
+        # traceback instead of a review.
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     if completed.returncode != 0:
-        raise SystemExit(f"git diff {base}...{head} failed: {completed.stderr.strip()}")
-    return completed.stdout
+        raise SystemExit(f"git diff {base}...{head} failed: {(completed.stderr or '').strip()}")
+    return completed.stdout or ""
 
 
 def main(argv=None) -> int:
