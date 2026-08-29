@@ -52,12 +52,16 @@ day of a release.
 
 ## DragonBot
 
-`.github/workflows/dragonbot.yml` replaces Dependabot. It does the same monthly
-job, with one difference that is the whole reason it exists: it opens its pull
-requests as a GitHub App this repository owns, so they carry this project's own
-bot identity and avatar rather than a shared one.
+DragonBot is this repository's own bot, and it does two jobs: it keeps
+dependencies honest, and it reviews every pull request. Both are CI - workflows in
+`.github/`, nothing in `src/devforge/` - and both run as a GitHub App this
+repository owns, so its pull requests and comments carry this project's identity
+and avatar rather than a shared one.
 
-What it does, once a month and on demand:
+### Dependency updates
+
+`.github/workflows/dragonbot.yml` replaces Dependabot. What it does, once a month
+and on demand:
 
 - **Action versions** are rewritten in the branch, `@vN` refs only. A branch ref
   such as `pypa/gh-action-pypi-publish@release/v1` is how that action asks to be
@@ -68,9 +72,57 @@ What it does, once a month and on demand:
   allowed to install, and that is a decision with a reason behind it rather than
   a chore to automate.
 
+### Reviewing pull requests
+
+`.github/workflows/dragonbot-review.yml` runs on every pull request that is not a
+draft - opened, reopened, pushed to, or marked ready - and posts one comment that
+it edits in place on each push. The reviewer itself is
+`.github/dragonbot/review.py`, with `.github/dragonbot/test_review.py` beside it.
+
+The comment has three kinds of note, kept apart because they are not equally
+trustworthy:
+
+| source | what it is | how it is wrong |
+| --- | --- | --- |
+| `diff rule` | patterns over the added lines and over the shape of the diff | false positives, and blind to anything it has no pattern for |
+| `security scan` | `devforge security scan --json`, restricted to the files the pull request touches | the scanner's own limits: no vulnerability database, no taint analysis |
+| `model` | an optional narrative pass | unreproducible, and confidently wrong often enough that it never sets the verdict |
+
+Four things about it are deliberate:
+
+- **It is a script, not a feature.** The reviewer depends on nothing but the
+  standard library and is not importable from the package. It reviews this
+  repository's pull requests; it is not a capability DevForge offers its users, and
+  changing it cannot break an install.
+- **It never fails the run.** Findings are reported, not enforced (`--fail-on high`
+  exists and is not used). The `security (self-scan)` job in `ci.yml` is what gates
+  a merge, and a review bot that can block one is a review bot people turn off.
+- **It costs nothing.** The narrative section uses GitHub Models through the
+  workflow's own `GITHUB_TOKEN`, which is what the `models: read` permission in
+  that file is for. There is no API key to add. If the account has no Models
+  access the request fails, the comment says that section was skipped, and every
+  other finding still posts. If a runner ever rejects the `models: read` key,
+  delete those two lines - the same skip path covers it. To use a paid provider
+  instead, set `DEVFORGE_REVIEW_ENDPOINT`, `DEVFORGE_REVIEW_TOKEN` and
+  `DEVFORGE_REVIEW_MODEL`; `GITHUB_TOKEN` is never forwarded to another host.
+- **Nothing from the pull request reaches a shell.** A title or description on a
+  fork's pull request is attacker-controlled text, so both are passed through the
+  environment and a file rather than interpolated into a `run:` block. The diff is
+  redacted and fenced as data before any of it is sent to a model.
+
+The review never approves. The strongest sentence it can produce is "nothing
+blocking was found", which is a statement about which checks ran, and a check that
+did not run is printed as skipped rather than left out - an empty section and an
+absent one look nothing alike.
+
+On a pull request from a fork the job token is read-only: the review still runs and
+appears in the run summary, and only the comment is skipped.
+
 ### Setting it up
 
-The job skips itself until this is done, so an unconfigured fork stays green.
+Neither job needs this to run - the review posts as `github-actions[bot]`, and the
+dependency job skips itself - so an unconfigured fork stays green. What it buys is
+the identity.
 
 1. Create a GitHub App owned by this account. Name it **DragonBot** and give it
    the avatar you want its pull requests to carry.
@@ -81,8 +133,9 @@ The job skips itself until this is done, so an unconfigured fork stays green.
    secret `DRAGONBOT_PRIVATE_KEY` (the generated `.pem`, whole file including the
    header and footer lines).
 
-The App's name and avatar are what appear on the pull request. Changing either
-later changes it everywhere, with no change to this workflow.
+The App's name and avatar are what appear on the pull requests it opens and the
+reviews it posts. Changing either later changes it everywhere, with no change to
+these workflows.
 
 ## Where things go
 
