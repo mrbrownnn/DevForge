@@ -39,9 +39,14 @@ that reference skills which do not exist.
 `requirements`, `planning`, `architecture`, `backend`, `frontend`, `testing`,
 `debugging`, `security`.
 
-They share a shape: a short method section, then anti-patterns. They are written as
-instructions to an engineer, not as descriptions of a topic — an agent acts on the
-former and ignores the latter.
+They share a shape: a one-line principle, a numbered **Method**, topic sections that
+carry the judgement calls (choosing a boundary, choosing a test level, narrowing by
+class of bug), **Anti-patterns**, and a **Done when** clause stating the verifiable
+exit condition. They are written as instructions to an engineer, not as descriptions of
+a topic — an agent acts on the former and ignores the latter.
+
+The `Done when` section is the part that matters to the verification loop: it is
+written so a verifier, not the author, can decide whether the step is finished.
 
 ## Adding one
 
