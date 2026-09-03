@@ -50,39 +50,24 @@ to PyPI uses trusted publishing and stays skipped until the repository variable
 everything except the two publishing steps, so the path is never first tried on the
 day of a release.
 
-## DragonBot
+## Bots
 
-`.github/workflows/dragonbot.yml` replaces Dependabot. It does the same monthly
-job, with one difference that is the whole reason it exists: it opens its pull
-requests as a GitHub App this repository owns, so they carry this project's own
-bot identity and avatar rather than a shared one.
+Two of them, with no overlap: one watches dependencies, the other reads diffs.
 
-What it does, once a month and on demand:
+`.github/dependabot.yml` opens a monthly pull request for GitHub Actions and for
+the Python dependencies, and CI on that pull request is what says whether a bump
+is safe.
 
-- **Action versions** are rewritten in the branch, `@vN` refs only. A branch ref
-  such as `pypa/gh-action-pypi-publish@release/v1` is how that action asks to be
-  pinned, so it is left alone. CI on the pull request is what says whether a bump
-  is safe.
-- **Dependency floors** are reported, never rewritten. The specifiers in
-  `pyproject.toml` are floors, not pins: raising one narrows what a user is
-  allowed to install, and that is a decision with a reason behind it rather than
-  a chore to automate.
+The pip entry sets `versioning-strategy: increase-if-necessary`. The specifiers in
+`pyproject.toml` are floors, not pins, and under the default strategy Dependabot
+opens a pull request per floor to raise them - raising a floor narrows what a user
+is allowed to install, which is a decision with a reason behind it rather than a
+chore to automate. With this strategy a floor moves only when it genuinely has to.
 
-### Setting it up
-
-The job skips itself until this is done, so an unconfigured fork stays green.
-
-1. Create a GitHub App owned by this account. Name it **DragonBot** and give it
-   the avatar you want its pull requests to carry.
-2. Repository permissions: **Contents** read & write, **Pull requests** read &
-   write. Nothing else - no account permissions, no webhook.
-3. Install the App on this repository.
-4. Add repository variable `DRAGONBOT_APP_ID` (the App's ID) and repository
-   secret `DRAGONBOT_PRIVATE_KEY` (the generated `.pem`, whole file including the
-   header and footer lines).
-
-The App's name and avatar are what appear on the pull request. Changing either
-later changes it everywhere, with no change to this workflow.
+**CodeRabbit** reviews pull requests. It is configured in the GitHub App rather
+than in this repository, so there is nothing here to keep in sync. Its comments
+are input to a review, not a substitute for one: the branch rule still requires
+`ci-ok`, and a human still approves.
 
 ## Where things go
 
