@@ -1,0 +1,31 @@
+version: 2
+
+updates:
+  # Actions are the one supply chain CI cannot check for itself: a pinned action
+  # that goes stale is a build step nobody is reading any more.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "ci"
+    labels: ["ci", "dependencies"]
+
+  # Runtime dependencies are deliberately four packages and the version specifiers
+  # in pyproject.toml are floors, not pins.
+  #
+  # `increase-if-necessary` is the whole reason this file can exist again. Under the
+  # default strategy Dependabot opens a pull request per floor to raise `>=2.7` to
+  # `>=2.13`, and raising a floor narrows what a user is allowed to install - a
+  # decision with a reason behind it, not a chore to automate. With this strategy a
+  # floor moves only when it genuinely has to, so what arrives is breakage and
+  # security news rather than churn.
+  - package-ecosystem: pip
+    directory: "/"
+    versioning-strategy: increase-if-necessary
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "deps"
+    labels: ["dependencies"]
+    open-pull-requests-limit: 5
