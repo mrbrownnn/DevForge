@@ -33,10 +33,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from devforge import __version__
 from devforge.tools.environment import build_env
 
 PROTOCOL_VERSION = "2024-11-05"
-CLIENT_INFO = {"name": "devforge", "version": "0.1.0"}
+CLIENT_INFO = {"name": "devforge", "version": __version__}
 
 #: A single JSON-RPC frame larger than this is refused unparsed.
 MAX_FRAME_BYTES = 4_000_000

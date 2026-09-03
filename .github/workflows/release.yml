@@ -63,18 +63,22 @@ jobs:
         # that actually reaches users, and it is built by a different job.
         run: |
           python - <<'PY'
-          import glob, tomllib, zipfile
-          version = tomllib.load(open("pyproject.toml", "rb"))["project"]["version"]
+          import glob, zipfile
           wheel = glob.glob("dist/*.whl")[0]
           names = zipfile.ZipFile(wheel).namelist()
+          has_license = any(
+              name.startswith("devforge-") and name.endswith(".dist-info/licenses/LICENSE")
+              for name in names
+          )
           required = [
               "devforge/builtin/workflows/feature.yaml",
               "devforge/builtin/agents/coder.yaml",
               "devforge/builtin/runtimes/codex-cli.yaml",
               "devforge/builtin/skills/backend/SKILL.md",
-              f"devforge-{version}.dist-info/licenses/LICENSE",
           ]
           missing = [r for r in required if r not in names]
+          if not has_license:
+              missing.append("devforge-*.dist-info/licenses/LICENSE")
           assert not missing, f"wheel is missing: {missing}"
           print(f"{wheel}: {len(names)} entries, all required assets present")
           PY
