@@ -42,18 +42,37 @@ jobs:
         id: version
         # A tag that disagrees with pyproject publishes a version nobody can find
         # again from the source. Cheap to check, expensive to discover later.
+        #
+        # The comparison is on PEP 440 versions, not on strings: a tag is spelled
+        # by a human (v1.2.0-beta.2) and the wheel is named by setuptools
+        # (1.2.0b2). Those are the same release, and a string compare fails the
+        # build on the spelling alone.
         run: |
-          version="$(python -c 'import tomllib;print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "packaged version: $version"
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            tag="${GITHUB_REF#refs/tags/v}"
-            if [[ "$tag" != "$version" ]]; then
-              echo "::error::tag v$tag does not match pyproject version $version"
-              exit 1
-            fi
-            echo "tag v$tag matches"
-          fi
+          python - <<'PY'
+          import os
+          import tomllib
+          from packaging.version import InvalidVersion, Version
+
+          raw = tomllib.load(open("pyproject.toml", "rb"))["project"]["version"]
+          version = Version(raw)
+          print(f"packaged version: {raw} (normalised: {version})")
+
+          ref = os.environ["GITHUB_REF"]
+          if ref.startswith("refs/tags/"):
+              tag = ref[len("refs/tags/"):].removeprefix("v")
+              try:
+                  tagged = Version(tag)
+              except InvalidVersion:
+                  print(f"::error::tag v{tag} is not a PEP 440 version")
+                  raise SystemExit(1)
+              if tagged != version:
+                  print(f"::error::tag v{tag} does not match pyproject version {raw}")
+                  raise SystemExit(1)
+              print(f"tag v{tag} matches")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write(f"version={version}\n")
+          PY
 
       - run: python -m build
       - run: twine check dist/*
