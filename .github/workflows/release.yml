@@ -71,8 +71,7 @@ jobs:
               print(f"tag v{tag} matches")
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
-              out.write(f"version={version}
-")
+              out.write(f"version={version}\n")
           PY
 
       - run: python -m build
