@@ -30,6 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v7
@@ -70,8 +71,11 @@ jobs:
                   raise SystemExit(1)
               print(f"tag v{tag} matches")
 
+          # PEP 440 already knows what a pre-release is, so nothing here has
+          # to guess from the spelling of the tag.
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
               out.write(f"version={version}\n")
+              out.write(f"prerelease={str(version.is_prerelease).lower()}\n")
           PY
 
       - run: python -m build
@@ -171,15 +175,25 @@ jobs:
       - name: publish the release with its artefacts
         env:
           GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ needs.build.outputs.prerelease }}
         run: |
           tag="${GITHUB_REF#refs/tags/}"
           if gh release view "$tag" >/dev/null 2>&1; then
+            # A release already under this tag is not necessarily one this
+            # workflow made: a draft someone left behind answers `view` too,
+            # and uploading into it publishes nothing. Upload, then say what
+            # the release is rather than inheriting it.
             gh release upload "$tag" dist/* --clobber
+            gh release edit "$tag" \
+              --title "DevForge $tag" \
+              --draft=false \
+              --prerelease="$PRERELEASE"
           else
             gh release create "$tag" dist/* \
               --title "DevForge $tag" \
               --generate-notes \
-              --verify-tag
+              --verify-tag \
+              --prerelease="$PRERELEASE"
           fi
 
   pypi:
