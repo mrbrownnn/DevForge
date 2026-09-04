@@ -50,39 +50,44 @@ to PyPI uses trusted publishing and stays skipped until the repository variable
 everything except the two publishing steps, so the path is never first tried on the
 day of a release.
 
-## DragonBot
+## Bots
 
-`.github/workflows/dragonbot.yml` replaces Dependabot. It does the same monthly
-job, with one difference that is the whole reason it exists: it opens its pull
-requests as a GitHub App this repository owns, so they carry this project's own
-bot identity and avatar rather than a shared one.
+Two bots watch this repository, and neither of them can block a merge.
 
-What it does, once a month and on demand:
+### Dependency updates
 
-- **Action versions** are rewritten in the branch, `@vN` refs only. A branch ref
-  such as `pypa/gh-action-pypi-publish@release/v1` is how that action asks to be
-  pinned, so it is left alone. CI on the pull request is what says whether a bump
-  is safe.
-- **Dependency floors** are reported, never rewritten. The specifiers in
-  `pyproject.toml` are floors, not pins: raising one narrows what a user is
-  allowed to install, and that is a decision with a reason behind it rather than
-  a chore to automate.
+`.github/dependabot.yml` covers two ecosystems, monthly.
 
-### Setting it up
+**Actions** are the one supply chain CI cannot check for itself: a pinned action
+that goes stale is a build step nobody is reading any more. A branch ref such as
+`pypa/gh-action-pypi-publish@release/v1` is how that action asks to be pinned, so
+it is left alone. CI on the pull request is what says whether a bump is safe.
 
-The job skips itself until this is done, so an unconfigured fork stays green.
+**Runtime dependencies** use `versioning-strategy: increase-if-necessary`, and
+that setting is the whole reason this file can exist. The specifiers in
+`pyproject.toml` are floors, not pins: raising one narrows what a user is allowed
+to install, and that is a decision with a reason behind it rather than a chore to
+automate. Under the default strategy Dependabot opens a pull request per floor to
+raise `>=2.7` to `>=2.13`; under this one a floor moves only when it genuinely has
+to, so what arrives is breakage and security news rather than churn.
 
-1. Create a GitHub App owned by this account. Name it **DragonBot** and give it
-   the avatar you want its pull requests to carry.
-2. Repository permissions: **Contents** read & write, **Pull requests** read &
-   write. Nothing else - no account permissions, no webhook.
-3. Install the App on this repository.
-4. Add repository variable `DRAGONBOT_APP_ID` (the App's ID) and repository
-   secret `DRAGONBOT_PRIVATE_KEY` (the generated `.pem`, whole file including the
-   header and footer lines).
+### Reviewing pull requests
 
-The App's name and avatar are what appear on the pull request. Changing either
-later changes it everywhere, with no change to this workflow.
+Review is CodeRabbit, running as a GitHub App with its own defaults - there is no
+configuration file in this repository and no workflow of ours behind it. It
+comments; it does not gate. The `security (self-scan)` job in `ci.yml` is what
+gates a merge, because a review bot that can block one is a review bot people turn
+off.
+
+DevForge's own scanner is available to a reviewer as `devforge security scan
+--json`, and its limits are worth stating: no vulnerability database, no taint
+analysis.
+
+This repository previously ran its own bot, DragonBot, for both jobs - a monthly
+dependency workflow and a reviewer script under `.github/dragonbot/`. Both are
+gone: the dependency half was replaced by Dependabot in #17, and the review half
+was disabled and then removed, along with the workflow that ran it. Nothing in
+`src/devforge/` ever depended on either.
 
 ## Where things go
 
